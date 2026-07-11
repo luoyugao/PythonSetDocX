@@ -83,15 +83,15 @@ class EventHandlers:
         from set_document_format import SetDocumentFormat
         set_doc_format = SetDocumentFormat(doc=dpm.work_doc)
         
-        if self.main_form.chk_add_page_num.get():
-            self._add_page_number()
-        
         if self.main_form.chk_change_page_margin.get():
             set_doc_format.set_page_margins(
                 float(self.main_form.top_margin.get()),
                 float(self.main_form.bottom_margin.get()),
                 float(self.main_form.left_margin.get()),
                 float(self.main_form.right_margin.get()))
+        
+        if self.main_form.chk_add_page_num.get():
+            self._add_page_number()
         
         if self.main_form.chk_change_main_title_format.get():
             set_doc_format.set_main_title_format(

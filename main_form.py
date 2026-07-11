@@ -902,15 +902,15 @@ class MainForm:
             
             set_doc_format = SetDocumentFormat(doc=self.work_doc)
             
-            if self.chk_add_page_num.get():
-                PageNumberManager.add_page_numbers_custom(self.work_doc)
-            
             if self.chk_change_page_margin.get():
                 set_doc_format.set_page_margins(
                     float(self.top_margin.get()),
                     float(self.bottom_margin.get()),
                     float(self.left_margin.get()),
                     float(self.right_margin.get()))
+            
+            if self.chk_add_page_num.get():
+                PageNumberManager.add_page_numbers_custom(self.work_doc)
             
             if self.chk_change_main_title_format.get():
                 set_doc_format.set_main_title_format(

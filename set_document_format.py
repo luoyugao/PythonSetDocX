@@ -23,11 +23,34 @@ class SetDocumentFormat:
             return
         
         margin_points = 28.35
+        right_margin_points = margin_points * right
         
-        self.work_doc.PageSetup.TopMargin = margin_points * top
-        self.work_doc.PageSetup.BottomMargin = margin_points * bottom
-        self.work_doc.PageSetup.LeftMargin = margin_points * left
-        self.work_doc.PageSetup.RightMargin = margin_points * right
+        for i in range(1, self.work_doc.Sections.Count + 1):
+            try:
+                section = self.work_doc.Sections(i)
+                ps = section.PageSetup
+                print(f"Section {i}: RightMargin before = {ps.RightMargin:.2f}")
+                
+                ps.TopMargin = margin_points * top
+                ps.BottomMargin = margin_points * bottom
+                ps.LeftMargin = margin_points * left
+                ps.RightMargin = right_margin_points
+                ps.MirrorMargins = False
+                ps.Gutter = 0
+                ps.CharsPerLine = 0
+                ps.LinesPage = 0
+                ps.LayoutMode = 0
+                
+                print(f"Section {i}: RightMargin after = {ps.RightMargin:.2f} (expected {right_margin_points:.2f})")
+            except Exception as ex:
+                print(f"Section {i}: 设置边距失败 - {ex}")
+        
+        self.work_doc.Repaginate()
+        
+        try:
+            self.work_doc.ActiveWindow.View.Type = 3
+        except:
+            pass
     
     def set_standard_line_spacing(self):
         if self.work_doc is None:
@@ -109,6 +132,7 @@ class SetDocumentFormat:
             
             if not is_in_table and not is_title:
                 paragraph.Alignment = word_alignment
+                paragraph.RightIndent = 0
             if indent_style is not None and not is_title and not is_in_table:
                 if indent_style == "首行缩进2字符":
                     paragraph.FirstLineIndent = 2 * 0.35 * 28.35
@@ -258,18 +282,26 @@ class SetDocumentFormat:
         
         for inline_shape in self.work_doc.InlineShapes:
             if inline_shape.Type == wc.wdInlineShapePicture:
-                page_width = self.work_doc.PageSetup.PageWidth - \
-                            self.work_doc.PageSetup.LeftMargin - \
-                            self.work_doc.PageSetup.RightMargin
-                inline_shape.Width = page_width
-                inline_shape.Borders.Enable = 1
-                
                 try:
-                    shape = inline_shape.ConvertToShape()
-                    shape.RelativeHorizontalPosition = wc.wdRelativeHorizontalPositionPage
-                    shape.WrapFormat.Type = wc.wdWrapSquare
+                    section = inline_shape.Range.Sections(1)
+                    ps = section.PageSetup
+                    page_width = ps.PageWidth - ps.LeftMargin - ps.RightMargin
+                    inline_shape.Width = page_width
+                    inline_shape.Borders.Enable = 1
+                    
+                    try:
+                        shape = inline_shape.ConvertToShape()
+                        shape.RelativeHorizontalPosition = wc.wdRelativeHorizontalPositionPage
+                        shape.Left = ps.LeftMargin
+                        shape.WrapFormat.Type = wc.wdWrapSquare
+                    except:
+                        pass
                 except:
-                    pass
+                    page_width = self.work_doc.PageSetup.PageWidth - \
+                                self.work_doc.PageSetup.LeftMargin - \
+                                self.work_doc.PageSetup.RightMargin
+                    inline_shape.Width = page_width
+                    inline_shape.Borders.Enable = 1
         
         if wrap_as_inline:
             for shape in self.work_doc.Shapes:
