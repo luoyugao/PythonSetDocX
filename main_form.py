@@ -74,8 +74,8 @@ class MainForm:
         main_frame = ttk.Frame(self.root, padding="3")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 创建左侧设置面板框架，固定宽度560像素（更宽以展示更多内容）
-        left_frame = ttk.Frame(main_frame, width=420)
+        # 创建左侧设置面板框架，固定宽度560像素（更宽以展示更多内容），淡黄色背景
+        left_frame = tk.Frame(main_frame, width=420, bg="#FFF8DC")
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 2))
         left_frame.pack_propagate(False)  # 防止子控件改变框架大小
         
@@ -99,12 +99,12 @@ class MainForm:
     
     def _create_left_panel(self, parent):
         """创建左侧可滚动的设置面板"""
-        # 创建画布控件，作为滚动区域的载体
-        canvas = tk.Canvas(parent)
+        # 创建画布控件，作为滚动区域的载体，淡黄色背景
+        canvas = tk.Canvas(parent, bg="#FFF8DC")
         # 创建垂直滚动条，与画布的yview方法关联
         scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=canvas.yview)
-        # 创建可滚动的框架，用于容纳所有设置区域控件
-        scrollable_frame = ttk.Frame(canvas)
+        # 创建可滚动的框架，用于容纳所有设置区域控件，淡黄色背景
+        scrollable_frame = tk.Frame(canvas, bg="#FFF8DC")
         
         # 绑定框架大小变化事件，当内容区域大小改变时更新画布的滚动区域范围
         scrollable_frame.bind(
@@ -137,11 +137,11 @@ class MainForm:
     def _create_page_margin_section(self, parent):
         """创建页面边距设置区域（参照C#界面紧凑布局）"""
         # group = ttk.LabelFrame(parent, text="调整页面边距")
-        group = ttk.LabelFrame(parent)
+        group = tk.Frame(parent, bg="#FFF8DC")
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_page_margin = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin).grid(
+        ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=1)
         
         # 第一行：上边距、下边距 + 全部1CM按钮
@@ -168,11 +168,11 @@ class MainForm:
     def _create_content_format_section(self, parent):
         """创建正文格式设置区域（参照C#紧凑布局）"""
         # group = ttk.LabelFrame(parent, text="变更正文格式")
-        group = ttk.LabelFrame(parent)
+        group = tk.Frame(parent, bg="#FFF8DC")
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_content_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更正文格式", variable=self.chk_change_content_format).grid(
+        ttk.Checkbutton(group, text="变更正文格式", variable=self.chk_change_content_format, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=1)
         
         # 第一行：缩进方式、对齐方式
@@ -213,11 +213,11 @@ class MainForm:
     
     def _create_main_title_section(self, parent):
         """创建文章首行总标题设置区域"""
-        group = ttk.LabelFrame(parent) # , text="变更文章首行总标题"
+        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更文章首行总标题"
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_main_title_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更文章首行总标题", variable=self.chk_change_main_title_format).grid(
+        ttk.Checkbutton(group, text="变更文章首行总标题", variable=self.chk_change_main_title_format, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=1)
         
         # 字体、字号、加粗并列
@@ -237,7 +237,7 @@ class MainForm:
     
     def _create_level_title_section(self, parent):
         """创建各章节标题格式设置区域（参照C#紧凑布局）"""
-        group = ttk.LabelFrame(parent) # , text="变更各章节标题格式"
+        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更各章节标题格式"
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_level_title_format = tk.BooleanVar(value=True)
@@ -302,11 +302,11 @@ class MainForm:
     
     def _create_page_orientation_section(self, parent):
         """创建纸张方向和页码设置区域"""
-        group = ttk.LabelFrame(parent) # , text="变更纸张方向")
+        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更纸张方向")
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_page_orientation = tk.BooleanVar(value=False)
-        ttk.Checkbutton(group, text="变更纸张方向", variable=self.chk_change_page_orientation).grid(
+        ttk.Checkbutton(group, text="变更纸张方向", variable=self.chk_change_page_orientation, style="Bold.TCheckbutton").grid(
             row=0, column=0, sticky=tk.W, padx=2, pady=1)
         
         self.radio_page_portrait = tk.BooleanVar(value=True)
@@ -321,11 +321,11 @@ class MainForm:
     
     def _create_image_table_section(self, parent):
         """创建图片和表格格式设置区域（参照C#紧凑排列）"""
-        group = ttk.LabelFrame(parent) # , text="变更图片和表格格式")
+        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更图片和表格格式")
         group.pack(fill=tk.X, padx=3, pady=0)
         
         self.chk_change_image_and_table_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format).grid(
+        ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=1)
         
         # 复选框行：不缩进、最大宽度
@@ -347,7 +347,7 @@ class MainForm:
     
     def _create_cancel_button(self, parent):
         """创建取消所有设置按钮"""
-        btn_frame = ttk.Frame(parent)
+        btn_frame = tk.Frame(parent, bg="#FFF8DC")
         btn_frame.pack(fill=tk.X, padx=3, pady=0)
         self.btn_cancel_settings = ttk.Button(btn_frame, text="取消所有设置", command=self._on_cancel_settings)
         self.btn_cancel_settings.pack(side=tk.LEFT, padx=2)
