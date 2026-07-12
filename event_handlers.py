@@ -130,8 +130,7 @@ class EventHandlers:
             
             dpm.word_app = Universal().get_active_word_app()
             dpm.work_doc = dpm.word_app.ActiveDocument
-            self.main_form.txt_full_filename.delete(0, tk.END)
-            self.main_form.txt_full_filename.insert(0, dpm.work_doc.FullName)
+            self.main_form._set_full_filename(dpm.work_doc.FullName)
         except:
             import tkinter as tk
             from tkinter import messagebox
@@ -166,7 +165,7 @@ class EventHandlers:
         import tkinter as tk
         from tkinter import messagebox, filedialog
         
-        if self.main_form.txt_full_filename.get() == "未选择文件":
+        if self.main_form._get_full_filename() == "未选择文件":
             messagebox.showwarning("警告", "没有指定需移动的文件")
             return
         
@@ -179,8 +178,8 @@ class EventHandlers:
                     return
             
             filename = self.main_form.txt_new_filename.get().strip() or \
-                       os.path.basename(self.main_form.txt_full_filename.get())
-            ext = os.path.splitext(self.main_form.txt_full_filename.get())[1]
+                       os.path.basename(self.main_form._get_full_filename())
+            ext = os.path.splitext(self.main_form._get_full_filename())[1]
             target_file_path = os.path.join(target_dir, filename + ext)
             
             if not os.path.exists(target_file_path):
@@ -190,7 +189,7 @@ class EventHandlers:
                         doc.SaveAs(target_file_path)
                         
                         try:
-                            os.remove(self.main_form.txt_full_filename.get())
+                            os.remove(self.main_form._get_full_filename())
                         except Exception as delete_ex:
                             messagebox.showwarning("警告", f"删除原文件失败: {delete_ex}\n文件已另存为: {target_file_path}")
                         
@@ -215,8 +214,7 @@ class EventHandlers:
                         messagebox.showerror("错误", f"切换文件失败: {ex}")
                 elif event.num == 3:
                     self._close_active_document()
-                    self.main_form.txt_full_filename.delete(0, tk.END)
-                    self.main_form.txt_full_filename.insert(0, "未选择文件")
+                    self.main_form._set_full_filename("未选择文件")
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
     
@@ -305,7 +303,7 @@ class EventHandlers:
         word_app = dpm.word_app
         doc = dpm.word_app.ActiveDocument
         
-        old_name = os.path.splitext(os.path.basename(self.main_form.txt_full_filename.get()))[0]
+        old_name = os.path.splitext(os.path.basename(self.main_form._get_full_filename()))[0]
         
         if word_app is None:
             return
@@ -316,8 +314,7 @@ class EventHandlers:
                 if not no_close:
                     self._close_active_document()
             except:
-                self.main_form.txt_full_filename.delete(0, tk.END)
-                self.main_form.txt_full_filename.insert(0, "未选择文件")
+                self.main_form._set_full_filename("未选择文件")
             return
         
         is_move = False
@@ -335,7 +332,7 @@ class EventHandlers:
                 messagebox.showerror("错误", "文件名包含非法字符")
                 return
             
-            ext = os.path.splitext(self.main_form.txt_full_filename.get())[1]
+            ext = os.path.splitext(self.main_form._get_full_filename())[1]
             new_full_filename = os.path.join(new_path, new_name + ext)
             
             if new_name != old_name or new_path != dpm.WORK_FOLDER:
@@ -345,7 +342,7 @@ class EventHandlers:
                         self._close_active_document()
                     
                     if new_name != old_name or is_move:
-                        os.remove(self.main_form.txt_full_filename.get())
+                        os.remove(self.main_form._get_full_filename())
                     
                     self.main_form.txt_new_filename.delete(0, tk.END)
                 except Exception as ex:

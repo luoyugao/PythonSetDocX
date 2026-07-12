@@ -99,9 +99,10 @@ class MainForm:
     
     def _create_left_panel(self, parent):
         """创建左侧可滚动的设置面板"""
-        # 创建画布控件，作为滚动区域的载体，淡黄色背景
+        style = ttk.Style()
+        style.configure("Bold.TCheckbutton", font=('TkDefaultFont', 9, 'bold'), foreground='#1976D2')
+        style.map("Bold.TCheckbutton", foreground=[('active', '#1976D2'), ('!disabled', '#1976D2')])
         canvas = tk.Canvas(parent, bg="#FFF8DC")
-        # 创建垂直滚动条，与画布的yview方法关联
         scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=canvas.yview)
         # 创建可滚动的框架，用于容纳所有设置区域控件，淡黄色背景
         scrollable_frame = tk.Frame(canvas, bg="#FFF8DC")
@@ -137,118 +138,116 @@ class MainForm:
     def _create_page_margin_section(self, parent):
         """创建页面边距设置区域（参照C#界面紧凑布局）"""
         # group = ttk.LabelFrame(parent, text="调整页面边距")
-        group = tk.Frame(parent, bg="#FFF8DC")
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black")
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_page_margin = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
         
         # 第一行：上边距、下边距 + 全部1CM按钮
-        ttk.Label(group, text="上边距:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="上边距:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.top_margin = ttk.Entry(group, width=7)
-        self.top_margin.grid(row=1, column=1, padx=(0,5), pady=1, sticky=tk.W)
+        self.top_margin.grid(row=1, column=1, padx=(0,5), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="下边距:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="下边距:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.bottom_margin = ttk.Entry(group, width=7)
-        self.bottom_margin.grid(row=1, column=3, padx=(0,5), pady=1, sticky=tk.W)
+        self.bottom_margin.grid(row=1, column=3, padx=(0,5), pady=3, sticky=tk.W)
         
         ttk.Button(group, text="全部1CM", command=self._on_set_all_margins_to_1cm).grid(
-            row=1, column=4, columnspan=2, padx=2, pady=1)
+            row=1, column=4, columnspan=2, padx=2, pady=3)
         
         # 第二行：左边距、右边距
-        ttk.Label(group, text="左边距:", anchor=tk.E).grid(row=2, column=0, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="左边距:", anchor=tk.E).grid(row=2, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.left_margin = ttk.Entry(group, width=7)
-        self.left_margin.grid(row=2, column=1, padx=(0,5), pady=1, sticky=tk.W)
+        self.left_margin.grid(row=2, column=1, padx=(0,5), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="右边距:", anchor=tk.E).grid(row=2, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="右边距:", anchor=tk.E).grid(row=2, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.right_margin = ttk.Entry(group, width=7)
-        self.right_margin.grid(row=2, column=3, padx=(0,5), pady=1, sticky=tk.W)
+        self.right_margin.grid(row=2, column=3, padx=(0,5), pady=3, sticky=tk.W)
     
     def _create_content_format_section(self, parent):
         """创建正文格式设置区域（参照C#紧凑布局）"""
         # group = ttk.LabelFrame(parent, text="变更正文格式")
-        group = tk.Frame(parent, bg="#FFF8DC")
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black")
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_content_format = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="变更正文格式", variable=self.chk_change_content_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
         
         # 第一行：缩进方式、对齐方式
-        ttk.Label(group, text="缩进方式:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="缩进方式:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_content_indent = ttk.Combobox(
             group, values=["首行缩进2字符", "无缩进", "悬挂缩进", "不变更"], width=14)
-        self.cmb_content_indent.grid(row=1, column=1, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_content_indent.grid(row=1, column=1, padx=(0,3), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="对齐方式:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="对齐方式:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_content_align = ttk.Combobox(
             group, values=["左对齐", "右对齐", "居中对齐", "两端对齐", "分散对齐"], width=10)
-        self.cmb_content_align.grid(row=1, column=3, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_content_align.grid(row=1, column=3, padx=(0,3), pady=3, sticky=tk.W)
         
         # 第二行：字体、字号、代码格式
-        ttk.Label(group, text="字体:", anchor=tk.E).grid(row=2, column=0, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="字体:", anchor=tk.E).grid(row=2, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_content_font = ttk.Combobox(
             group, values=["宋体", "黑体", "楷体", "仿宋", "不变更"], width=10)
-        self.cmb_content_font.grid(row=2, column=1, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_content_font.grid(row=2, column=1, padx=(0,3), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="字号:", anchor=tk.E).grid(row=2, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="字号:", anchor=tk.E).grid(row=2, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_content_font_size = ttk.Combobox(
             group, values=["五号", "小四", "四号", "三号", "不变更"], width=10)
-        self.cmb_content_font_size.grid(row=2, column=3, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_content_font_size.grid(row=2, column=3, padx=(0,3), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="代码格式:", anchor=tk.E).grid(row=0, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="代码格式:", anchor=tk.E).grid(row=0, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_code_format = ttk.Combobox(
             group, values=["自动", "不变更"], width=10)
-        self.cmb_code_format.grid(row=0, column=3, padx=(0,2), pady=1, sticky=tk.W)
+        self.cmb_code_format.grid(row=0, column=3, padx=(0,2), pady=3, sticky=tk.W)
         
         # 第三行：删除空行、标准行段间距（短文本，同行排列）
         self.chk_delete_empty_lines = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="删除空行", variable=self.chk_delete_empty_lines).grid(
-            row=3, column=0, columnspan=2, sticky=tk.W, padx=2, pady=1)
+            row=3, column=0, columnspan=2, sticky=tk.W, padx=2, pady=3)
         
         self.chk_standard_line_spacing = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="标准行段间距", variable=self.chk_standard_line_spacing).grid(
-            row=3, column=2, columnspan=2, sticky=tk.W, padx=2, pady=1)
+            row=3, column=2, columnspan=2, sticky=tk.W, padx=2, pady=3)
     
     def _create_main_title_section(self, parent):
         """创建文章首行总标题设置区域"""
-        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更文章首行总标题"
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更文章首行总标题"
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_main_title_format = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="变更文章首行总标题", variable=self.chk_change_main_title_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
         
         # 字体、字号、加粗并列
-        ttk.Label(group, text="字体:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="字体:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_main_title_font = ttk.Combobox(
             group, values=["宋体", "黑体", "楷体", "仿宋"], width=10)
-        self.cmb_main_title_font.grid(row=1, column=1, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_main_title_font.grid(row=1, column=1, padx=(0,3), pady=3, sticky=tk.W)
         
-        ttk.Label(group, text="字号:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=1)
+        ttk.Label(group, text="字号:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_main_title_font_size = ttk.Combobox(
             group, values=["二号", "三号", "四号"], width=10)
-        self.cmb_main_title_font_size.grid(row=1, column=3, padx=(0,3), pady=1, sticky=tk.W)
+        self.cmb_main_title_font_size.grid(row=1, column=3, padx=(0,3), pady=3, sticky=tk.W)
         
         self.chk_main_title_bold = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="加粗", variable=self.chk_main_title_bold).grid(
-            row=1, column=4, sticky=tk.W, padx=2, pady=1)
+            row=1, column=4, sticky=tk.W, padx=2, pady=3)
     
     def _create_level_title_section(self, parent):
         """创建各章节标题格式设置区域（参照C#紧凑布局）"""
-        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更各章节标题格式"
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更各章节标题格式"
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_level_title_format = tk.BooleanVar(value=True)
-        style = ttk.Style()
-        style.configure("Bold.TCheckbutton", font=('TkDefaultFont', 9, 'bold'))
         ttk.Checkbutton(group, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
         
         # 升级/降级按钮行（短标签）
         btn_frame = ttk.Frame(group)
-        btn_frame.grid(row=1, column=0, columnspan=5, pady=1, sticky=tk.W)
+        btn_frame.grid(row=0, column=0, columnspan=5, pady=3, sticky=tk.E)
         self.btn_title_level_up = ttk.Button(btn_frame, text="各级标题升一级", command=self._on_title_level_up)
         self.btn_title_level_up.pack(side=tk.LEFT, padx=2)
         self.btn_title_level_down = ttk.Button(btn_frame, text="各级标题降一级", command=self._on_title_level_down)
@@ -257,7 +256,7 @@ class MainForm:
         # 表头行
         headers = ["标题级别", "字体", "字号", "序号样式", "缩进方式"]
         for i, header in enumerate(headers):
-            ttk.Label(group, text=header).grid(row=2, column=i, padx=2, pady=1)
+            ttk.Label(group, text=header).grid(row=2, column=i, padx=2, pady=3)
         
         self.level_title_font_vars = []
         self.level_title_font_size_vars = []
@@ -302,62 +301,72 @@ class MainForm:
     
     def _create_page_orientation_section(self, parent):
         """创建纸张方向和页码设置区域"""
-        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更纸张方向")
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更纸张方向")
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_page_orientation = tk.BooleanVar(value=False)
         ttk.Checkbutton(group, text="变更纸张方向", variable=self.chk_change_page_orientation, style="Bold.TCheckbutton").grid(
-            row=0, column=0, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, sticky=tk.W, padx=2, pady=3)
         
         self.radio_page_portrait = tk.BooleanVar(value=True)
         ttk.Radiobutton(group, text="纵向", variable=self.radio_page_portrait, value=True).grid(
-            row=0, column=1, padx=2, pady=1)
+            row=0, column=1, padx=2, pady=3)
         ttk.Radiobutton(group, text="横向", variable=self.radio_page_portrait, value=False).grid(
-            row=0, column=2, padx=2, pady=1)
+            row=0, column=2, padx=2, pady=3)
         
         self.chk_add_page_num = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="添加页码", variable=self.chk_add_page_num).grid(
-            row=0, column=3, sticky=tk.W, padx=(5,2), pady=1)
+            row=0, column=3, sticky=tk.W, padx=(5,2), pady=3)
     
     def _create_image_table_section(self, parent):
         """创建图片和表格格式设置区域（参照C#紧凑排列）"""
-        group = tk.Frame(parent, bg="#FFF8DC") # , text="变更图片和表格格式")
-        group.pack(fill=tk.X, padx=3, pady=0)
+        group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更图片和表格格式")
+        group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_image_and_table_format = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=1)
+            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
         
         # 复选框行：不缩进、最大宽度
         self.chk_image_no_indent = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="不缩进", variable=self.chk_image_no_indent).grid(
-            row=1, column=0, sticky=tk.W, padx=2, pady=1)
+            row=1, column=0, sticky=tk.W, padx=2, pady=3)
         
         self.chk_max_width = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="最大宽度", variable=self.chk_max_width).grid(
-            row=1, column=1, sticky=tk.W, padx=2, pady=1)
+            row=1, column=1, sticky=tk.W, padx=2, pady=3)
         
-        # 按钮行：删除所有图片、取消嵌入型环绕
-        btn_frame = ttk.Frame(group)
-        btn_frame.grid(row=2, column=0, columnspan=5, pady=1, sticky=tk.W)
-        self.btn_delete_all_pic = ttk.Button(btn_frame, text="删除所有图片", command=self._on_delete_all_pictures)
-        self.btn_delete_all_pic.pack(side=tk.LEFT, padx=2)
-        self.btn_cancel_wrap_as_inline = ttk.Button(btn_frame, text="取消嵌入型环绕", command=self._on_cancel_wrap_as_inline)
-        self.btn_cancel_wrap_as_inline.pack(side=tk.LEFT, padx=2)
+        self.btn_cancel_wrap_as_inline = ttk.Button(group, text="取消嵌入型环绕", command=self._on_cancel_wrap_as_inline)
+        self.btn_cancel_wrap_as_inline.grid(row=1, column=2, sticky=tk.W, padx=(44, 2), pady=3)
+
+        group.grid_columnconfigure(3, weight=1)
+
+        # 删除所有图片按钮（与上一行控件同行，靠最右排列）
+        self.btn_delete_all_pic = ttk.Button(group, text="删除所有图片", command=self._on_delete_all_pictures)
+        self.btn_delete_all_pic.grid(row=1, column=4, sticky=tk.E, padx=2, pady=3)
     
     def _create_cancel_button(self, parent):
-        """创建取消所有设置按钮"""
-        btn_frame = tk.Frame(parent, bg="#FFF8DC")
-        btn_frame.pack(fill=tk.X, padx=3, pady=0)
-        self.btn_cancel_settings = ttk.Button(btn_frame, text="取消所有设置", command=self._on_cancel_settings)
-        self.btn_cancel_settings.pack(side=tk.LEFT, padx=2)
+        """创建取消所有设置按钮和使能所有设置按钮"""
+        btn_frame = tk.Frame(parent, bg="#FFF8DC", highlightthickness=0)
+        btn_frame.pack(fill=tk.X, padx=3, pady=(16, 3))
+        center_frame = ttk.Frame(btn_frame)
+        center_frame.pack(expand=True)
+        self.btn_cancel_settings = ttk.Button(center_frame, text="取消所有设置", command=self._on_cancel_settings, width=15)
+        self.btn_cancel_settings.pack(side=tk.LEFT, padx=(0, 11))
+        self.btn_enable_settings = ttk.Button(center_frame, text="使能所有设置", command=self._on_enable_settings, width=15)
+        self.btn_enable_settings.pack(side=tk.LEFT, padx=0)
     
     def _create_right_panel(self, parent):
         """创建右侧目录树面板（去除水平滚动条，设置列宽度确保完整显示）"""
+        style = ttk.Style()
+        style.configure("FileInfo.TLabelframe", font=('TkDefaultFont', 9, 'bold'), foreground='#1976D2')
+        style.configure("FileInfo.TLabelframe.Label", font=('TkDefaultFont', 9, 'bold'), foreground='#1976D2')
+        style.configure("SaveDir.TLabelframe", font=('TkDefaultFont', 11, 'bold'), foreground='#1976D2')
+        style.configure("SaveDir.TLabelframe.Label", font=('TkDefaultFont', 11, 'bold'), foreground='#1976D2')
         # 创建目录树
-        title_frame = ttk.LabelFrame(parent, text="选择保存目录")   # 
+        title_frame = ttk.LabelFrame(parent, text="选择保存目录", style="SaveDir.TLabelframe")
         
-        title_frame.pack(fill=tk.X, padx=0, pady=1)
+        title_frame.pack(fill=tk.X, padx=0, pady=3, ipady=8)
         
         # 选择目录按钮
         btn_select_dir = ttk.Button(title_frame, text="选择目录", command=self._on_select_directory)
@@ -410,7 +419,13 @@ class MainForm:
         self.tree.bind("<Double-1>", self._on_tree_item_double_click)
         self.tree.bind("<Button-1>", self._on_tree_item_left_click)
         self.tree.bind("<Button-3>", self._on_tree_item_right_click)
-        
+
+        # 为"移动（重命名）到其它目录"特殊节点配置醒目样式
+        self.tree.tag_configure(
+            "move_action",
+            foreground="dark blue",
+            font=('TkDefaultFont', 9, 'bold'))
+
         # 加载文件夹图标，用于目录树每个节点前显示
         if getattr(sys, 'frozen', False):
             script_dir = sys._MEIPASS
@@ -422,66 +437,104 @@ class MainForm:
         except Exception:
             self.folder_icon = None
 
+        # 节点ID到文件系统路径的映射字典（特殊节点不加入此映射）
         self.tree_path_map = {}
+        # "移动（重命名）到其它目录"特殊节点的ID，每次重建目录树时更新
+        self._move_other_node_id = None
+        # 记录"移动到其它目录"对话框上次所选目录，作为下次对话框初值
+        self._last_move_other_dir = None
     
     def _create_bottom_panel(self, parent):
         """创建底部操作面板（参照C#紧凑布局）"""
+        # 定义文件信息区域样式（与"调整页面边距"控件相同的颜色与字体）
+        style = ttk.Style()
+        style.configure("FileInfo.TLabelframe", font=('TkDefaultFont', 9, 'bold'), foreground='#1976D2')
+        style.configure("FileInfo.TLabelframe.Label", font=('TkDefaultFont', 9, 'bold'), foreground='#1976D2')
+        style.configure("Bold.TLabel", font=('TkDefaultFont', 9, 'bold'))
+        style.configure("NoBorder.TLabelframe", borderwidth=0, padding=0)
+        style.configure("NoBorder.TLabelframe.Label", foreground="#FFF8DC")
+
         # 文件信息区域
-        file_frame = ttk.LabelFrame(parent, text="文件信息")
+        file_frame = ttk.LabelFrame(parent, text="文件信息", style="FileInfo.TLabelframe")
         file_frame.pack(fill=tk.X, padx=(2, 0), pady=2)
-        
+
         # 第一行：当前文档路径
-        ttk.Label(file_frame, text="当前文档:").grid(row=0, column=0, sticky=tk.W, padx=(2,0))
-        self.txt_full_filename = ttk.Entry(file_frame, width=32)
-        self.txt_full_filename.grid(row=0, column=1, columnspan=2, sticky=tk.EW, padx=(0,3), pady=1)
+        ttk.Label(file_frame, text="当前文档:", style="Bold.TLabel").grid(row=0, column=0, sticky=tk.W, padx=(2,5))
+        self.lab_full_filename = ttk.Frame(file_frame)
+        self.lab_full_filename.grid(row=0, column=1, columnspan=2, sticky=tk.EW, padx=(0,3), pady=3)
+        self._lab_full_filename_label = ttk.Label(self.lab_full_filename, text="", anchor=tk.W)
+        self._lab_full_filename_label.pack(fill=tk.X, padx=2, pady=0)
         file_frame.columnconfigure(1, weight=1)
-        
+
         # 第二行：新文件名 + 使用标题作为文件名复选框 + 新文件名输入框
-        ttk.Label(file_frame, text="新文件名:").grid(row=1, column=0, sticky=tk.W, padx=(2,0))
+        ttk.Label(file_frame, text="新文件名:", style="Bold.TLabel").grid(row=1, column=0, sticky=tk.W, padx=(2,5))
         self.chk_title_as_filename = tk.BooleanVar(value=True)
         ttk.Checkbutton(file_frame, text="使用标题作为文件名", variable=self.chk_title_as_filename).grid(
-            row=1, column=1, sticky=tk.W, padx=0, pady=1)
+            row=1, column=1, sticky=tk.W, padx=0, pady=3)
         self.txt_new_filename = ttk.Entry(file_frame, width=20)
-        self.txt_new_filename.grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=(2,3), pady=1)
+        self.txt_new_filename.grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=(2,3), pady=3)
         file_frame.columnconfigure(2, weight=1)
         
         # 按钮区域
         btn_frame = ttk.Frame(parent)
-        btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        btn_frame.pack(fill=tk.X, padx=2, pady=(16, 16))
         
-        # 主要操作按钮
-        self.btn_format_adjust = ttk.Button(btn_frame, text="调整文档格式", command=self._on_format_adjust)
-        self.btn_format_adjust.pack(side=tk.LEFT, padx=2)
+        btn_style = ttk.Style()
+        btn_style.configure("BoldBtn.TButton", font=('TkDefaultFont', 11, 'bold'))
         
-        self.btn_select_active_doc = ttk.Button(btn_frame, text="选择活动文档", command=self._on_select_active_doc)
-        self.btn_select_active_doc.pack(side=tk.LEFT, padx=2)
+        # 主要操作按钮 - 使用grid布局实现水平分散分布
+        self.btn_format_adjust = ttk.Button(btn_frame, text="调整文档格式", command=self._on_format_adjust, style="BoldBtn.TButton")
+        self.btn_format_adjust.grid(row=0, column=0, padx=4, pady=2, ipady=3, sticky=tk.EW)
         
-        self.btn_save_close = ttk.Button(btn_frame, text="保存并关闭", command=self._on_save_close)
-        self.btn_save_close.pack(side=tk.LEFT, padx=2)
+        self.btn_select_active_doc = ttk.Button(btn_frame, text="选择活动文档", command=self._on_select_active_doc, style="BoldBtn.TButton")
+        self.btn_select_active_doc.grid(row=0, column=1, padx=4, pady=2, ipady=3, sticky=tk.EW)
         
-        self.btn_rename = ttk.Button(btn_frame, text="重命名", command=self._on_rename)
-        self.btn_rename.pack(side=tk.LEFT, padx=2)
+        self.btn_save_close = ttk.Button(btn_frame, text="保存并关闭", command=self._on_save_close, style="BoldBtn.TButton")
+        self.btn_save_close.grid(row=0, column=2, padx=4, pady=2, ipady=3, sticky=tk.EW)
         
-        self.btn_filename_as_title = ttk.Button(btn_frame, text="文件名为标题", command=self._on_filename_as_title)
-        self.btn_filename_as_title.pack(side=tk.LEFT, padx=2)
+        self.btn_rename = ttk.Button(btn_frame, text="重命名", command=self._on_rename, style="BoldBtn.TButton")
+        self.btn_rename.grid(row=0, column=3, padx=4, pady=2, ipady=3, sticky=tk.EW)
         
-        self.btn_delete = ttk.Button(btn_frame, text="删除文件", command=self._on_delete)
-        self.btn_delete.pack(side=tk.LEFT, padx=2)
+        self.btn_filename_as_title = ttk.Button(btn_frame, text="文件名为标题", command=self._on_filename_as_title, style="BoldBtn.TButton")
+        self.btn_filename_as_title.grid(row=0, column=4, padx=4, pady=2, ipady=3, sticky=tk.EW)
+        
+        self.btn_delete = ttk.Button(btn_frame, text="删除文件", command=self._on_delete, style="BoldBtn.TButton")
+        self.btn_delete.grid(row=0, column=5, padx=4, pady=2, ipady=3, sticky=tk.EW)
+        
+        # 设置6列等宽分布
+        for i in range(6):
+            btn_frame.columnconfigure(i, weight=1)
         
         # 状态栏
         self.status_bar = ttk.Label(parent, text="就绪", relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(fill=tk.X, padx=2, pady=(0,2))
-    
+
+    def _set_full_filename(self, text):
+        """更新当前文档路径显示"""
+        self._lab_full_filename_label.config(text=text)
+
+    def _get_full_filename(self):
+        """获取当前文档路径"""
+        return self._lab_full_filename_label.cget("text")
+
     def _load_directory_tree(self, root_path, levels):
         """加载目录树结构"""
         # 清空Treeview中现有的所有节点
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
+
         # 清空节点ID到文件系统路径的映射字典
         self.tree_path_map.clear()
-        
-        # 检查根路径是否存在，不存在则直接返回
+
+        # 在最顶部插入特殊的"移动（重命名）到其它目录"节点
+        # 该节点不对应任何实际目录，点击时会弹出目录选择对话框，
+        # 便于将当前文档移动到目录树之外的任意目录
+        move_kw = dict(text="移动（重命名）到其它目录", open=False, tags=("move_action",))
+        if self.folder_icon:
+            move_kw["image"] = self.folder_icon
+        self._move_other_node_id = self.tree.insert("", 0, **move_kw)
+
+        # 检查根路径是否存在，不存在则直接返回（特殊节点仍保留显示）
         if not os.path.exists(root_path):
             return
         
@@ -569,8 +622,7 @@ class MainForm:
                         pass
                     # 重新打开新文件以保持文档引用
                     self.work_doc = self.word_app.Documents.Open(new_path)
-                    self.txt_full_filename.delete(0, tk.END)
-                    self.txt_full_filename.insert(0, new_path)
+                    self._set_full_filename(new_path)
                 else:
                     self.work_doc.Save()
             else:
@@ -581,78 +633,132 @@ class MainForm:
             # 重置缓存
             self._last_first_para_text = None
             # 清空文件名输入框
-            self.txt_full_filename.delete(0, tk.END)
+            self._set_full_filename("")
             self.txt_new_filename.delete(0, tk.END)
         except Exception as ex:
             messagebox.showerror("错误", f"保存文档失败: {ex}")
+
+    def _move_current_document(self, target_dir, close_after=True):
+        """将当前文档移动（可同时重命名）到指定目录。
+        close_after=True 时移动后关闭文档；False 时保持文档打开。
+        此方法供目录树普通节点点击与"移动到其它目录"特殊节点共用。"""
+        if self.work_doc is None:
+            self.status_bar.config(text="请先选择一个文档")
+            return
+        try:
+            old_path = self.work_doc.FullName
+            new_name = self.txt_new_filename.get().strip()
+            if not new_name:
+                new_name = os.path.splitext(os.path.basename(old_path))[0]
+
+            ext = os.path.splitext(old_path)[1]
+            new_path = os.path.join(target_dir, new_name + ext)
+
+            if new_path.lower() != old_path.lower():
+                overwrite = False
+                if os.path.exists(new_path):
+                    overwrite = True
+
+                self.work_doc.SaveAs(new_path)
+                if close_after:
+                    self.work_doc.Close(0)
+
+                try:
+                    os.remove(old_path)
+                except Exception as delete_ex:
+                    self.status_bar.config(text=f"新文件已保存，但删除原文件失败: {delete_ex}")
+                    return
+
+                if close_after:
+                    self.work_doc = None
+                    self._last_first_para_text = None
+                    self._set_full_filename("")
+                    self.txt_new_filename.delete(0, tk.END)
+                    if overwrite:
+                        self.status_bar.config(text=f"文件《{new_name + ext}》已移动并覆盖同名文件，文档已关闭")
+                    else:
+                        self.status_bar.config(text=f"文件《{new_name + ext}》已移动，文档已关闭")
+                else:
+                    self._set_full_filename(new_path)
+                    dpm.word_app = self.word_app
+                    dpm.work_doc = self.work_doc
+                    self._suppress_monitor = True
+                    self.root.after(3000, lambda: setattr(self, '_suppress_monitor', False))
+                    if overwrite:
+                        self.status_bar.config(text=f"文件《{new_name + ext}》已移动并覆盖同名文件，文档保持打开")
+                    else:
+                        self.status_bar.config(text=f"文件《{new_name + ext}》已移动，文档保持打开")
+            else:
+                # 目标路径与原路径相同，仅保存
+                self.work_doc.Save()
+                if close_after:
+                    self.work_doc.Close(0)
+                    self.work_doc = None
+                    self._last_first_para_text = None
+                    self._set_full_filename("")
+                    self.txt_new_filename.delete(0, tk.END)
+                    self.status_bar.config(text="文件已保存并关闭")
+                else:
+                    self.status_bar.config(text="文件已保存")
+        except Exception as ex:
+            self.status_bar.config(text=f"移动文档失败: {ex}")
+
+    def _move_to_other_directory(self):
+        """点击"移动（重命名）到其它目录"特殊节点时调用：
+        弹出目录选择对话框（初值为上次调用此对话框所选目录），
+        按右击目录树节点的相同逻辑（保持文档打开）将当前文档移动到选定目录。
+        若当前没有正在编辑的文档则不响应点击。"""
+        # 当前没有正在编辑的文档时不响应点击
+        if self.work_doc is None:
+            return
+        # 初值优先使用上次调用此对话框所选目录，否则回退到当前根目录，再回退到用户主目录
+        initial_dir = (self._last_move_other_dir
+                       or self.current_root_path
+                       or os.path.expanduser("~"))
+        target_dir = filedialog.askdirectory(
+            title="选择要移动到的目标目录",
+            initialdir=initial_dir)
+        if not target_dir:
+            return
+        # 记住本次所选目录，作为下次对话框的初值
+        self._last_move_other_dir = target_dir
+        # 与右击目录树节点相同：移动后保持文档打开
+        self._move_current_document(target_dir, close_after=False)
 
     def _on_tree_item_left_click(self, event):
         """左键单击事件：将当前文档移动到所选文件夹并关闭文档"""
         element = self.tree.identify_element(event.x, event.y)
         if element == 'indicator':
             return
-        
+
         item = self.tree.identify('item', event.x, event.y)
-        if not item or item not in self.tree_path_map:
+        if not item:
             return
-        
+
+        # 命中"移动（重命名）到其它目录"特殊节点时，弹出目录选择对话框
+        if item == self._move_other_node_id:
+            self._move_to_other_directory()
+            return
+
+        if item not in self.tree_path_map:
+            return
+
         path = self.tree_path_map[item]
         if not os.path.isdir(path):
             return
-        
-        if self.work_doc is None:
-            self.status_bar.config(text="请先选择一个文档")
-            return
-        
-        try:
-            old_path = self.work_doc.FullName
-            new_name = self.txt_new_filename.get().strip()
-            if not new_name:
-                new_name = os.path.splitext(os.path.basename(old_path))[0]
-            
-            ext = os.path.splitext(old_path)[1]
-            new_path = os.path.join(path, new_name + ext)
-            
-            if new_path.lower() != old_path.lower():
-                overwrite = False
-                if os.path.exists(new_path):
-                    overwrite = True
-                
-                self.work_doc.SaveAs(new_path)
-                self.work_doc.Close(0)
-                
-                try:
-                    os.remove(old_path)
-                except Exception as delete_ex:
-                    self.status_bar.config(text=f"新文件已保存，但删除原文件失败: {delete_ex}")
-                    return
-                
-                if overwrite:
-                    self.status_bar.config(text=f"文件《{new_name + ext}》已移动并覆盖同名文件，文档已关闭")
-                else:
-                    self.status_bar.config(text=f"文件《{new_name + ext}》已移动，文档已关闭")
-            else:
-                self.work_doc.Save()
-                self.work_doc.Close(0)
-                self.status_bar.config(text="文件已保存并关闭")
-            
-            self.work_doc = None
-            self._last_first_para_text = None
-            self.txt_full_filename.delete(0, tk.END)
-            self.txt_new_filename.delete(0, tk.END)
-        except Exception as ex:
-            self.status_bar.config(text=f"移动文档失败: {ex}")
-    
+
+        self._move_current_document(path, close_after=True)
+
     def _on_tree_item_double_click(self, event):
         """目录树双击事件处理：在资源管理器中打开对应目录，并监视其关闭后自动刷新目录树"""
         item = self.tree.identify("item", event.x, event.y)
         if not item or item not in self.tree_path_map:
             return
-        
+
         path = self.tree_path_map[item]
-        
+
         target = path if os.path.isdir(path) else os.path.dirname(path)
-        
+
         # 使用subprocess启动explorer.exe（避免阻塞主线程），
         # 并在线程中等待其关闭，然后通过after在主线程刷新目录树
         def _wait_and_reload():
@@ -665,64 +771,29 @@ class MainForm:
                 self.root.after(0, lambda: self._load_directory_tree(self.current_root_path, self.current_level))
             except Exception as ex:
                 self.root.after(0, lambda: messagebox.showerror("错误", f"打开文件夹失败: {ex}"))
-        
+
         t = threading.Thread(target=_wait_and_reload, daemon=True)
         t.start()
-    
+
     def _on_tree_item_right_click(self, event):
         """右键单击事件：将当前文档移动到所选文件夹但不关闭"""
         item = self.tree.identify('item', event.x, event.y)
-        if not item or item not in self.tree_path_map:
+        if not item:
             return
-        
+
+        # 命中"移动（重命名）到其它目录"特殊节点时，弹出目录选择对话框（保持文档打开）
+        if item == self._move_other_node_id:
+            self._move_to_other_directory()
+            return
+
+        if item not in self.tree_path_map:
+            return
+
         path = self.tree_path_map[item]
         if not os.path.isdir(path):
             return
-        
-        if self.work_doc is None:
-            self.status_bar.config(text="请先选择一个文档")
-            return
-        
-        try:
-            old_path = self.work_doc.FullName
-            new_name = self.txt_new_filename.get().strip()
-            if not new_name:
-                new_name = os.path.splitext(os.path.basename(old_path))[0]
-            
-            ext = os.path.splitext(old_path)[1]
-            new_path = os.path.join(path, new_name + ext)
-            
-            if new_path.lower() != old_path.lower():
-                overwrite = False
-                if os.path.exists(new_path):
-                    overwrite = True
-                
-                self.work_doc.SaveAs(new_path)
-                
-                try:
-                    os.remove(old_path)
-                except Exception as delete_ex:
-                    self.status_bar.config(text=f"新文件已保存，但删除原文件失败: {delete_ex}")
-                    return
-                
-                self.txt_full_filename.delete(0, tk.END)
-                self.txt_full_filename.insert(0, new_path)
-                
-                dpm.word_app = self.word_app
-                dpm.work_doc = self.work_doc
-                
-                self._suppress_monitor = True
-                self.root.after(3000, lambda: setattr(self, '_suppress_monitor', False))
-                
-                if overwrite:
-                    self.status_bar.config(text=f"文件《{new_name + ext}》已移动并覆盖同名文件，文档保持打开")
-                else:
-                    self.status_bar.config(text=f"文件《{new_name + ext}》已移动，文档保持打开")
-            else:
-                self.work_doc.Save()
-                self.status_bar.config(text="文件已保存")
-        except Exception as ex:
-            self.status_bar.config(text=f"移动文档失败: {ex}")
+
+        self._move_current_document(path, close_after=False)
     
     def _open_document(self, path, close_current=True):
         """打开指定路径的Word文档"""
@@ -748,8 +819,7 @@ class MainForm:
             # 使用Word应用打开指定路径的文档
             self.work_doc = self.word_app.Documents.Open(path)
             # 更新界面上"当前文档"输入框的显示内容
-            self.txt_full_filename.delete(0, tk.END)
-            self.txt_full_filename.insert(0, self.work_doc.FullName)
+            self._set_full_filename(self.work_doc.FullName)
             
             # 更新全局变量中的Word应用和文档对象，供其他模块使用
             dpm.word_app = self.word_app
@@ -807,8 +877,7 @@ class MainForm:
                 # 重新打开新文件
                 self.work_doc = self.word_app.Documents.Open(new_path)
                 # 更新界面上"当前文档"输入框的显示
-                self.txt_full_filename.delete(0, tk.END)
-                self.txt_full_filename.insert(0, new_path)
+                self._set_full_filename(new_path)
             else:
                 # 文件名不变，仅保存文档
                 self.work_doc.Save()
@@ -861,8 +930,7 @@ class MainForm:
                     # 将活动文档设置为当前工作文档
                     self.work_doc = self.word_app.ActiveDocument
                     # 更新界面上"当前文档"输入框的显示
-                    self.txt_full_filename.delete(0, tk.END)
-                    self.txt_full_filename.insert(0, self.work_doc.FullName)
+                    self._set_full_filename(self.work_doc.FullName)
                     # 更新全局变量中的Word应用和文档对象
                     dpm.word_app = self.word_app
                     dpm.work_doc = self.work_doc
@@ -890,8 +958,7 @@ class MainForm:
                 return
             
             self.work_doc = active_doc
-            self.txt_full_filename.delete(0, tk.END)
-            self.txt_full_filename.insert(0, self.work_doc.FullName)
+            self._set_full_filename(self.work_doc.FullName)
             dpm.word_app = self.word_app
             dpm.work_doc = self.work_doc
             self._update_filename_from_first_paragraph()
@@ -1027,8 +1094,7 @@ class MainForm:
             
             # 设置当前活动文档为工作文档
             self.work_doc = self.word_app.ActiveDocument
-            self.txt_full_filename.delete(0, tk.END)
-            self.txt_full_filename.insert(0, self.work_doc.FullName)
+            self._set_full_filename(self.work_doc.FullName)
             
             # 更新全局变量
             dpm.word_app = self.word_app
@@ -1097,7 +1163,7 @@ class MainForm:
                     self.status_bar.config(text=f"新文件已保存，但删除原文件失败: {delete_ex}")
             
             self._last_first_para_text = None
-            self.txt_full_filename.delete(0, tk.END)
+            self._set_full_filename("")
             self.txt_new_filename.delete(0, tk.END)
             if delete_success:
                 self.status_bar.config(text="保存成功")
@@ -1115,8 +1181,7 @@ class MainForm:
         try:
             self.work_doc.Close(0)
             os.remove(filename)
-            self.txt_full_filename.delete(0, tk.END)
-            self.txt_full_filename.insert(0, "未选择文件")
+            self._set_full_filename("未选择文件")
             self.work_doc = None
             self._last_first_para_text = None
             self.status_bar.config(text="删除成功")
@@ -1132,6 +1197,15 @@ class MainForm:
         self.chk_change_page_orientation.set(False)
         self.chk_change_image_and_table_format.set(False)
     
+    def _on_enable_settings(self):
+        """使能所有设置（变更纸张方向除外）"""
+        self.chk_change_page_margin.set(True)
+        self.chk_change_content_format.set(True)
+        self.chk_change_main_title_format.set(True)
+        self.chk_change_level_title_format.set(True)
+        self.chk_change_page_orientation.set(False)
+        self.chk_change_image_and_table_format.set(True)
+    
     def _on_title_level_up(self):
         """所有标题升一级"""
         if self.work_doc is None:
@@ -1140,13 +1214,21 @@ class MainForm:
         
         try:
             from win32com.client import constants as wc
-            
+
+            # 预检：若最高一级标题已为第1级，则不再执行升一级逻辑并提示
+            for i in range(1, self.work_doc.Paragraphs.Count + 1):
+                para = self.work_doc.Paragraphs(i)
+                style = get_range_style(para)
+                if style.NameLocal == "标题 1":
+                    messagebox.showinfo("提示", "最高一级弹窗已升到第1级，不能再升了！")
+                    return
+
             # 遍历所有段落
             for i in range(1, self.work_doc.Paragraphs.Count + 1):
                 para = self.work_doc.Paragraphs(i)
                 style = get_range_style(para)
                 style_name = style.NameLocal
-                
+
                 # 根据当前样式名确定新样式
                 new_style = None
                 if style_name == "标题 6":
@@ -1159,14 +1241,14 @@ class MainForm:
                     new_style = "标题 2"
                 elif style_name == "标题 2":
                     new_style = "标题 1"
-                
+
                 if new_style is not None:
                     set_range_style(para.Range, new_style)
-            
+
             self.status_bar.config(text="所有标题已升一级")
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
-    
+
     def _on_title_level_down(self):
         """所有标题降一级"""
         if self.work_doc is None:
@@ -1258,8 +1340,7 @@ class MainForm:
                         if self.work_doc is None or self.work_doc.FullName != active_doc.FullName:
                             self.work_doc = active_doc
                             # 更新当前文档路径
-                            self.txt_full_filename.delete(0, tk.END)
-                            self.txt_full_filename.insert(0, self.work_doc.FullName)
+                            self._set_full_filename(self.work_doc.FullName)
                             # 更新全局变量
                             dpm.word_app = self.word_app
                             dpm.work_doc = self.work_doc
