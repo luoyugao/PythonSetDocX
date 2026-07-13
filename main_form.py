@@ -1,7 +1,7 @@
 import os
+import sys
 import subprocess
 import threading
-import sys
 import tkinter as tk
 import tkinter.font
 from tkinter import ttk, filedialog, messagebox
@@ -32,6 +32,8 @@ class MainForm:
         self._last_first_para_text = None
         # 临时抑制文档监控标志，用于右键移动后防止监控重置UI
         self._suppress_monitor = False
+        # 单击/双击防抖定时器
+        self._click_timer = None
         
         # 创建所有界面控件，包括左侧设置面板、右侧目录树和底部操作栏
         self._create_widgets()
@@ -726,7 +728,7 @@ class MainForm:
         self._move_current_document(target_dir, close_after=False)
 
     def _on_tree_item_left_click(self, event):
-        """左键单击事件：将当前文档移动到所选文件夹并关闭文档"""
+        """左键单击事件：延迟执行文档移动，以便与双击区分"""
         element = self.tree.identify_element(event.x, event.y)
         if element == 'indicator':
             return
@@ -735,7 +737,6 @@ class MainForm:
         if not item:
             return
 
-        # 命中"移动（重命名）到其它目录"特殊节点时，弹出目录选择对话框
         if item == self._move_other_node_id:
             self._move_to_other_directory()
             return
@@ -747,27 +748,31 @@ class MainForm:
         if not os.path.isdir(path):
             return
 
-        self._move_current_document(path, close_after=True)
+        if self._click_timer:
+            self.root.after_cancel(self._click_timer)
+
+        def _delayed_move():
+            self._move_current_document(path, close_after=True)
+
+        self._click_timer = self.root.after(250, _delayed_move)
 
     def _on_tree_item_double_click(self, event):
-        """目录树双击事件处理：在资源管理器中打开对应目录，并监视其关闭后自动刷新目录树"""
+        """目录树双击事件处理：在资源管理器中打开对应文件夹，保持文档打开状态"""
+        if self._click_timer:
+            self.root.after_cancel(self._click_timer)
+            self._click_timer = None
+
         item = self.tree.identify("item", event.x, event.y)
         if not item or item not in self.tree_path_map:
             return
 
         path = self.tree_path_map[item]
-
         target = path if os.path.isdir(path) else os.path.dirname(path)
 
-        # 使用subprocess启动explorer.exe（避免阻塞主线程），
-        # 并在线程中等待其关闭，然后通过after在主线程刷新目录树
         def _wait_and_reload():
             try:
-                # 启动explorer进程并打开目标文件夹
                 proc = subprocess.Popen(['explorer', target], shell=True)
-                # 等待进程结束（即资源管理器窗口被关闭）
                 proc.wait()
-                # 关闭后通过after在主线程中重新加载目录树
                 self.root.after(0, lambda: self._load_directory_tree(self.current_root_path, self.current_level))
             except Exception as ex:
                 self.root.after(0, lambda: messagebox.showerror("错误", f"打开文件夹失败: {ex}"))
@@ -847,48 +852,14 @@ class MainForm:
         self.right_margin.insert(0, "1.0")
     
     def _on_rename(self):
-        """重命名当前打开的文档"""
-        # 检查是否有打开的文档
+        """重命名当前打开的文档（保持在原目录）"""
         if self.work_doc is None:
             messagebox.showwarning("警告", "请先选择一个文档")
             return
         
-        try:
-            # 获取用户输入的新文件名（去除首尾空格）
-            new_name = self.txt_new_filename.get().strip()
-            
-            # 检查新文件名是否为空
-            if not new_name:
-                messagebox.showwarning("警告", "请输入新文件名")
-                return
-            
-            # 获取旧文件名（不含扩展名）和文件扩展名
-            old_name = os.path.splitext(os.path.basename(self.work_doc.FullName))[0]
-            ext = os.path.splitext(self.work_doc.FullName)[1]
-            # 构建新文件的完整路径
-            new_path = os.path.join(os.path.dirname(self.work_doc.FullName), new_name + ext)
-            
-            # 如果新文件名与旧文件名不同
-            if new_name != old_name:
-                # 将文档另存为新路径
-                self.work_doc.SaveAs(new_path)
-                # 删除原文件
-                os.remove(self.work_doc.FullName)
-                # 重新打开新文件
-                self.work_doc = self.word_app.Documents.Open(new_path)
-                # 更新界面上"当前文档"输入框的显示
-                self._set_full_filename(new_path)
-            else:
-                # 文件名不变，仅保存文档
-                self.work_doc.Save()
-            
-            # 清空新文件名输入框
-            self.txt_new_filename.delete(0, tk.END)
-            # 显示重命名成功提示
-            messagebox.showinfo("完成", "重命名成功")
-        except Exception as ex:
-            # 捕获并显示重命名过程中的错误
-            messagebox.showerror("错误", f"重命名失败: {ex}")
+        old_path = self.work_doc.FullName
+        target_dir = os.path.dirname(old_path)
+        self._move_current_document(target_dir, close_after=False)
     
     def _on_filename_as_title(self):
         """将文件名主名作为标题插入文档第一段前，并按总标题格式设置"""
