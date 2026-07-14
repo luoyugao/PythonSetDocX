@@ -766,12 +766,13 @@ class MainForm:
         if not item or item not in self.tree_path_map:
             return
 
-        path = self.tree_path_map[item]
-        target = path if os.path.isdir(path) else os.path.dirname(path)
+        # 目录树节点均为目录，使用os.path.normpath确保Windows反斜杠路径
+        target = os.path.normpath(self.tree_path_map[item])
 
         def _wait_and_reload():
             try:
-                proc = subprocess.Popen(['explorer', target], shell=True)
+                # 使用explorer.exe完整路径，不使用shell=True，确保路径解析正确
+                proc = subprocess.Popen(['explorer.exe', target])
                 proc.wait()
                 self.root.after(0, lambda: self._load_directory_tree(self.current_root_path, self.current_level))
             except Exception as ex:
