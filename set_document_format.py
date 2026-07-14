@@ -7,6 +7,7 @@ from word_constants import set_range_style, get_range_information, get_range_sty
 class SetDocumentFormat:
     def __init__(self, full_name=None, doc=None):
         self.work_doc = None
+        self.custom_list_templates = {}
         if doc is not None:
             self.work_doc = doc
             print(f"正在激活文档：{self.work_doc.FullName}")
@@ -16,6 +17,15 @@ class SetDocumentFormat:
             from universal import Universal
             self.work_doc = Universal().get_active_word_app().Documents[full_name]
             self.work_doc.Activate()
+    
+    def _get_custom_list_template(self, number_style):
+        if number_style not in self.custom_list_templates:
+            list_template = self.work_doc.ListTemplates.Add(True)
+            level_1 = list_template.ListLevels(1)
+            level_1.NumberFormat = '资料%1. '
+            level_1.NumberStyle = wc.wdListNumberStyleArabic
+            self.custom_list_templates[number_style] = list_template
+        return self.custom_list_templates[number_style]
     
     def set_page_margins(self, top, bottom, left, right):
         if self.work_doc is None:
@@ -233,6 +243,8 @@ class SetDocumentFormat:
                     list_template = list_gallery.ListTemplates(4)
                 elif number_style == "①":
                     list_template = list_gallery.ListTemplates(5)
+                elif number_style == "资料1. ":
+                    list_template = self._get_custom_list_template(number_style)
                 
                 if list_template is not None:
                     style.LinkToListTemplate(list_template)
@@ -267,6 +279,8 @@ class SetDocumentFormat:
                         list_template = list_gallery.ListTemplates(4)
                     elif number_style == "①":
                         list_template = list_gallery.ListTemplates(5)
+                    elif number_style == "资料1. ":
+                        list_template = self._get_custom_list_template(number_style)
                     
                     if list_template is not None:
                         style.LinkToListTemplate(list_template)

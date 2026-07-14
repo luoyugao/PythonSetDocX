@@ -33,6 +33,7 @@ wdInlineShapePicture = 3
 wdStyleTypeParagraph = 1
 
 wdOutlineNumberGallery = 2
+wdListNumberStyleArabic = 0
 
 wdWrapSquare = 0
 wdWrapTopBottom = 3
