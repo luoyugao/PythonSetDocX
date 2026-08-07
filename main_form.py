@@ -129,19 +129,19 @@ class MainForm:
         canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
         
         # 创建各个设置区域（按从上到下顺序）
+        self._create_cancel_button(scrollable_frame)            # 取消所有设置按钮
         self._create_page_margin_section(scrollable_frame)      # 页面边距设置区域
         self._create_content_format_section(scrollable_frame)   # 正文格式设置区域
         self._create_main_title_section(scrollable_frame)       # 文章总标题格式设置区域
         self._create_level_title_section(scrollable_frame)      # 章节标题格式设置区域
         self._create_page_orientation_section(scrollable_frame) # 纸张方向和页码设置区域
         self._create_image_table_section(scrollable_frame)      # 图片和表格格式设置区域
-        self._create_cancel_button(scrollable_frame)            # 取消所有设置按钮
     
     def _create_page_margin_section(self, parent):
         """创建页面边距设置区域（参照C#界面紧凑布局）"""
         # group = ttk.LabelFrame(parent, text="调整页面边距")
         group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black")
-        group.pack(fill=tk.X, padx=3, pady=(3, 3))
+        group.pack(fill=tk.X, padx=3, pady=(14, 3))
         
         self.chk_change_page_margin = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin, style="Bold.TCheckbutton").grid(
@@ -243,12 +243,16 @@ class MainForm:
         group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更各章节标题格式"
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
+        # 增加容器高度，设置容器内边距
+        inner_frame = tk.Frame(group, bg="white")
+        inner_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(3, 2))
+        
         self.chk_change_level_title_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton").grid(
+        ttk.Checkbutton(inner_frame, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
         
         # 升级/降级按钮行（短标签）
-        btn_frame = ttk.Frame(group)
+        btn_frame = ttk.Frame(inner_frame)
         btn_frame.grid(row=0, column=0, columnspan=5, pady=3, sticky=tk.E)
         self.btn_title_level_up = ttk.Button(btn_frame, text="各级标题升一级", command=self._on_title_level_up)
         self.btn_title_level_up.pack(side=tk.LEFT, padx=2)
@@ -258,7 +262,7 @@ class MainForm:
         # 表头行
         headers = ["标题级别", "字体", "字号", "序号样式", "缩进方式"]
         for i, header in enumerate(headers):
-            ttk.Label(group, text=header).grid(row=2, column=i, padx=2, pady=3)
+            ttk.Label(inner_frame, text=header).grid(row=2, column=i, padx=2, pady=3)
         
         self.level_title_font_vars = []
         self.level_title_font_size_vars = []
@@ -266,34 +270,34 @@ class MainForm:
         self.level_title_indent_vars = []
         
         fonts = ["不变更", "宋体", "黑体", "楷体", "仿宋"]
-        font_sizes = ["不变更", "二号", "小二", "三号", "四号", "小四", "五号"]
+        font_sizes = ["不变更", "三号", "小三", "四号", "小四", "五号", "小五"]
         number_styles = ["不变更", "资料1. ", "一.", "一）", "1.", "1)", "①"]
         indents = ["不变更", "无缩进", "首行缩进2字符"]
         
         for i in range(5):
-            ttk.Label(group, text=f"{i+1}级").grid(row=i+3, column=0, padx=2, pady=1)
+            ttk.Label(inner_frame, text=f"{i+1}级").grid(row=i+3, column=0, padx=2, pady=1)
             
-            font_var = ttk.Combobox(group, values=fonts, width=8)
+            font_var = ttk.Combobox(inner_frame, values=fonts, width=8)
             font_var.grid(row=i+3, column=1, padx=1, pady=1)
             self.level_title_font_vars.append(font_var)
             
-            font_size_var = ttk.Combobox(group, values=font_sizes, width=8)
+            font_size_var = ttk.Combobox(inner_frame, values=font_sizes, width=8)
             font_size_var.grid(row=i+3, column=2, padx=1, pady=1)
             self.level_title_font_size_vars.append(font_size_var)
             
-            number_var = ttk.Combobox(group, values=number_styles, width=8)
+            number_var = ttk.Combobox(inner_frame, values=number_styles, width=8)
             number_var.grid(row=i+3, column=3, padx=1, pady=1)
             self.level_title_number_vars.append(number_var)
             
-            indent_var = ttk.Combobox(group, values=indents, width=10)
+            indent_var = ttk.Combobox(inner_frame, values=indents, width=10)
             indent_var.grid(row=i+3, column=4, padx=1, pady=1)
             self.level_title_indent_vars.append(indent_var)
         
         self.level_title_font_vars[0].set("黑体")
         self.level_title_font_vars[1].set("黑体")
         
-        self.level_title_font_size_vars[0].set("四号")
-        self.level_title_font_size_vars[1].set("小四")
+        self.level_title_font_size_vars[0].set("不变更")
+        self.level_title_font_size_vars[1].set("不变更")
         self.level_title_font_size_vars[2].set("不变更")
         self.level_title_font_size_vars[3].set("不变更")
         self.level_title_font_size_vars[4].set("不变更")
@@ -350,7 +354,7 @@ class MainForm:
     def _create_cancel_button(self, parent):
         """创建取消所有设置按钮和使能所有设置按钮"""
         btn_frame = tk.Frame(parent, bg="#FFF8DC", highlightthickness=0)
-        btn_frame.pack(fill=tk.X, padx=3, pady=(16, 3))
+        btn_frame.pack(fill=tk.X, padx=3, pady=(14, 3))
         center_frame = ttk.Frame(btn_frame)
         center_frame.pack(expand=True)
         self.btn_cancel_settings = ttk.Button(center_frame, text="取消所有设置", command=self._on_cancel_settings, width=15)
