@@ -45,6 +45,7 @@ msoAutomationSecurityLow = 1
 wdFirstCharacterLineNumber = 10
 wdWithInTable = 12
 wdRelativeHorizontalPositionPage = 0
+wdShapeCenter = -999994
 
 
 def set_range_style(range_obj, style):

@@ -961,6 +961,12 @@ class MainForm:
                     self.cmb_main_title_font_size.get(),
                     self.chk_main_title_bold.get())
             
+            # 始终居中所有图片，不受"变更图片与表格的格式"控件影响
+            set_doc_format.center_all_images()
+
+            # 始终将所有表格调整为最大宽度，不受"变更图片与表格的格式"控件影响
+            set_doc_format.set_all_tables_max_width()
+
             if self.chk_change_image_and_table_format.get():
                 set_doc_format.set_images_and_tables()
             

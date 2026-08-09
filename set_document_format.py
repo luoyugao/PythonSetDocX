@@ -327,6 +327,38 @@ class SetDocumentFormat:
         for table in self.work_doc.Tables:
             table.AutoFitBehavior(wc.wdAutoFitWindow)
     
+    def center_all_images(self):
+        """将所有图片居中显示（始终执行，不受界面控件影响）"""
+        if self.work_doc is None:
+            return
+
+        # 处理嵌入式图片：将所在段落设置为居中对齐
+        for inline_shape in self.work_doc.InlineShapes:
+            if inline_shape.Type == wc.wdInlineShapePicture:
+                try:
+                    inline_shape.Range.ParagraphFormat.Alignment = wc.wdAlignParagraphCenter
+                except:
+                    pass
+
+        # 处理浮动图片：水平居中于页面
+        for shape in self.work_doc.Shapes:
+            try:
+                shape.RelativeHorizontalPosition = wc.wdRelativeHorizontalPositionPage
+                shape.Left = wc.wdShapeCenter
+            except:
+                pass
+
+    def set_all_tables_max_width(self):
+        """将所有表格调整为页面最大宽度（始终执行，不受界面控件影响）"""
+        if self.work_doc is None:
+            return
+
+        for table in self.work_doc.Tables:
+            try:
+                table.AutoFitBehavior(wc.wdAutoFitWindow)
+            except:
+                pass
+
     def delete_all_pictures(self):
         if self.work_doc is None:
             return
