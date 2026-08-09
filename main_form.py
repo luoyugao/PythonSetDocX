@@ -271,7 +271,7 @@ class MainForm:
         
         fonts = ["不变更", "宋体", "黑体", "楷体", "仿宋"]
         font_sizes = ["不变更", "三号", "小三", "四号", "小四", "五号", "小五"]
-        number_styles = ["不变更", "资料1. ", "一.", "一）", "1.", "1)", "①"]
+        number_styles = ["不变更", "资料1. ", "一.", "一）", "1.", "1)", "①", "无序号"]
         indents = ["不变更", "无缩进", "首行缩进2字符"]
         
         for i in range(5):
@@ -961,6 +961,9 @@ class MainForm:
                     self.cmb_main_title_font_size.get(),
                     self.chk_main_title_bold.get())
             
+            # 始终为所有图片添加1px黑色外框，不受"变更图片与表格的格式"控件影响
+            set_doc_format.add_image_border()
+
             # 始终居中所有图片，不受"变更图片与表格的格式"控件影响
             set_doc_format.center_all_images()
 
@@ -1002,20 +1005,23 @@ class MainForm:
         """设置章节标题样式，遍历文档所有段落并应用对应级别的标题样式"""
         # 初始化存储1-5级标题样式对象的列表，初始值为None表示尚未创建
         level_styles = [None, None, None, None, None]
-        
+        # 记录用户选择了"无序号"的级别（索引0-4），这些级别的段落需要
+        # 在样式链接修复之外，额外调用 RemoveNumbers() 强制清除编号
+        no_number_levels = set()
+
         try:
             # 获取文档对象，优先使用格式设置对象中的文档，其次使用当前工作文档
             doc = set_doc_format.work_doc
             if doc is None:
                 doc = self.work_doc
-            
+
             # 如果文档对象仍为None，则直接返回
             if doc is None:
                 return
-            
+
             # 获取文档中的段落总数
             para_count = doc.Paragraphs.Count
-            
+
             # 遍历文档中的每一个段落（从1开始，Word对象索引从1开始）
             for para_index in range(1, para_count + 1):
                 try:
@@ -1023,36 +1029,53 @@ class MainForm:
                     paragraph = doc.Paragraphs(para_index)
                     # 获取段落的大纲级别（1-9级，0表示正文）
                     level_index = set_doc_format.get_paragraph_outline_level(paragraph)
-                    
+
                     # 只处理1-5级标题，忽略正文和其他级别
                     if level_index < 1 or level_index > 5:
                         continue
-                    
+
                     # 如果该级别的样式尚未创建
                     if level_styles[level_index - 1] is None:
                         # 获取该级别标题的各项格式设置
                         font = self.level_title_font_vars[level_index - 1].get()
                         font_size = self.level_title_font_size_vars[level_index - 1].get()
-                        number_style = self.level_title_number_vars[level_index - 1].get()
+                        number_style_raw = self.level_title_number_vars[level_index - 1].get()
                         indent = self.level_title_indent_vars[level_index - 1].get()
-                        
-                        # 将"不变更"选项转换为None，表示保持原有设置
-                        if font == "不变更":
+
+                        # 将"不变更"及空值转换为None，表示保持原有设置
+                        # 但"无序号"需要特殊处理：它必须触发样式创建（以解除旧的列表模板链接），
+                        # 所以不能转为None，保留原值以便传入 set_title_styles
+                        if not font or font == "不变更":
                             font = None
-                        if font_size == "不变更":
+                        if not font_size or font_size == "不变更":
                             font_size = None
-                        if number_style == "不变更":
+                        if number_style_raw == "无序号":
+                            no_number_levels.add(level_index - 1)
+                            number_style = "无序号"
+                        elif not number_style_raw or number_style_raw == "不变更":
                             number_style = None
-                        if indent == "不变更":
+                        else:
+                            number_style = number_style_raw
+                        if not indent or indent == "不变更":
                             indent = None
-                        
+
                         # 如果有至少一项属性需要修改，则创建该级别的标题样式
                         if font is not None or font_size is not None or indent is not None or number_style is not None:
                             level_styles[level_index - 1] = set_doc_format.set_title_styles(
                                 level_index, font, font_size, number_style, indent)
-                    
+
+                    # 应用样式到段落
                     if level_styles[level_index - 1] is not None:
                         set_range_style(paragraph.Range, level_styles[level_index - 1])
+
+                    # 对于"无序号"级别：在样式链接修复之外，还要直接清除段落的列表编号。
+                    # Word 对已应用同一样式名的段落可能不会重新评估列表模板链接，
+                    # 因此必须在段落级别调用 RemoveNumbers() 来确保编号被清除。
+                    if (level_index - 1) in no_number_levels:
+                        try:
+                            paragraph.Range.ListFormat.RemoveNumbers()
+                        except:
+                            pass
                 except:
                     # 忽略单个段落处理时的异常，继续处理下一个段落
                     continue

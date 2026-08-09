@@ -47,6 +47,12 @@ wdWithInTable = 12
 wdRelativeHorizontalPositionPage = 0
 wdShapeCenter = -999994
 
+wdLineStyleSingle = 1
+wdLineWidth025pt = 2
+wdColorBlack = 0
+
+wdListNumberStyleNone = 255
+
 
 def set_range_style(range_obj, style):
     try:

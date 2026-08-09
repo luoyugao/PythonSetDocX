@@ -214,7 +214,7 @@ class SetDocumentFormat:
                          number_style=None, indent_style=None):
         if self.work_doc is None:
             return None
-        
+
         if isinstance(level_or_para, int):
             level = level_or_para
             style = None
@@ -222,73 +222,140 @@ class SetDocumentFormat:
                 style = self.work_doc.Styles(f"标题 {level}")
             except:
                 style = self.work_doc.Styles.Add(f"标题{level}", wc.wdStyleTypeParagraph)
-            
+
             if font is not None:
                 style.Font.Name = font
-            
+
             if font_size is not None:
                 style.Font.Size = self._convert_chinese_font_size_to_points(font_size)
-            
+
             if number_style is not None:
-                list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
-                list_template = None
-                
-                if number_style == "一.":
-                    list_template = list_gallery.ListTemplates(1)
-                elif number_style == "一）":
-                    list_template = list_gallery.ListTemplates(2)
-                elif number_style == "1.":
-                    list_template = list_gallery.ListTemplates(3)
-                elif number_style == "1)":
-                    list_template = list_gallery.ListTemplates(4)
-                elif number_style == "①":
-                    list_template = list_gallery.ListTemplates(5)
-                elif number_style == "资料1. ":
-                    list_template = self._get_custom_list_template(number_style)
-                
-                if list_template is not None:
-                    style.LinkToListTemplate(list_template)
-            
+                if number_style == "无序号":
+                    self._remove_numbering_from_style(style, level)
+                else:
+                    list_template = self._create_single_level_template(number_style, level)
+                    if list_template is not None:
+                        list_template.ListLevels(level).LinkedStyle = style
+
             style.Font.Bold = 1
             return style
         else:
             para = level_or_para
             if font is None and font_size is None and number_style is None and indent_style is None:
                 return
-            
+
             try:
                 style = get_range_style(para)
-                
+
                 if font is not None:
                     style.Font.Name = font
-                
+
                 if font_size is not None:
                     style.Font.Size = self._convert_chinese_font_size_to_points(font_size)
-                
+
                 if number_style is not None:
-                    list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
-                    list_template = None
-                    
-                    if number_style == "一.":
-                        list_template = list_gallery.ListTemplates(1)
-                    elif number_style == "一）":
-                        list_template = list_gallery.ListTemplates(2)
-                    elif number_style == "1.":
-                        list_template = list_gallery.ListTemplates(3)
-                    elif number_style == "1)":
-                        list_template = list_gallery.ListTemplates(4)
-                    elif number_style == "①":
-                        list_template = list_gallery.ListTemplates(5)
-                    elif number_style == "资料1. ":
-                        list_template = self._get_custom_list_template(number_style)
-                    
-                    if list_template is not None:
-                        style.LinkToListTemplate(list_template)
-                
+                    level = self.get_paragraph_outline_level(para)
+                    if level >= 1:
+                        if number_style == "无序号":
+                            self._remove_numbering_from_style(style, level)
+                        else:
+                            list_template = self._create_single_level_template(number_style, level)
+                            if list_template is not None:
+                                list_template.ListLevels(level).LinkedStyle = style
+
                 style.Font.Bold = 1
                 set_range_style(para.Range, style)
             except Exception as ex:
                 print(f"设置标题样式时出错: {ex}")
+
+    def _create_single_level_template(self, number_style, target_level):
+        """创建一个全新的列表模板，仅配置指定级别的编号格式。
+
+        不使用 wdOutlineNumberGallery 中的预配置多级模板（它们已预设全部9级
+        的 LinkedStyle，会导致其他标题级别被连带修改），而是创建空白模板，
+        仅从图库模板中复制目标级别的格式参数。
+        """
+        # 创建全新的空白列表模板（所有级别均无格式）
+        list_template = self.work_doc.ListTemplates.Add(True)
+
+        # 获取图库模板，仅用于读取参考格式
+        list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
+
+        ref_template = None
+        if number_style == "一.":
+            ref_template = list_gallery.ListTemplates(1)
+        elif number_style == "一）":
+            ref_template = list_gallery.ListTemplates(2)
+        elif number_style == "1.":
+            ref_template = list_gallery.ListTemplates(3)
+        elif number_style == "1)":
+            ref_template = list_gallery.ListTemplates(4)
+        elif number_style == "①":
+            ref_template = list_gallery.ListTemplates(5)
+        elif number_style == "资料1. ":
+            # "资料1. "已经使用自定义模板，其级别格式是我们自己设置的，
+            # 但为了一致性（避免该模板其他级别可能存在的连锁影响），
+            # 仍然创建一个全新的模板
+            ref_template = self._get_custom_list_template(number_style)
+
+        if ref_template is None:
+            return None
+
+        # 从参考模板复制目标级别（始终取 level 1）的格式到新模板的 target_level
+        ref_level_obj = ref_template.ListLevels(1)
+        target_level_obj = list_template.ListLevels(target_level)
+
+        target_level_obj.NumberFormat = ref_level_obj.NumberFormat
+        target_level_obj.NumberStyle = ref_level_obj.NumberStyle
+        try:
+            target_level_obj.NumberPosition = ref_level_obj.NumberPosition
+        except:
+            pass
+        try:
+            target_level_obj.Alignment = ref_level_obj.Alignment
+        except:
+            pass
+        try:
+            target_level_obj.TrailingCharacter = ref_level_obj.TrailingCharacter
+        except:
+            pass
+        try:
+            target_level_obj.TabPosition = ref_level_obj.TabPosition
+        except:
+            pass
+        try:
+            target_level_obj.ResetOnHigher = ref_level_obj.ResetOnHigher
+        except:
+            pass
+        try:
+            target_level_obj.StartAt = ref_level_obj.StartAt
+        except:
+            pass
+
+        return list_template
+
+    def _remove_numbering_from_style(self, style, level):
+        """移除指定样式的编号（实现"无序号"功能）。
+
+        做法：创建全新的空白列表模板，清空其所有级别的 NumberFormat，
+        再将目标级别链接到对应样式。仅影响目标级别，不波及其它标题级别。
+        注意：仅设置样式层的链接可能不够——对于已应用该样式的段落，
+        调用方还需对段落直接执行 ListFormat.RemoveNumbers() 才能彻底清除。
+        """
+        try:
+            empty_template = self.work_doc.ListTemplates.Add(True)
+            # 清空所有9个级别的编号格式，防止模板自带默认格式
+            for lvl in range(1, 10):
+                try:
+                    level_obj = empty_template.ListLevels(lvl)
+                    level_obj.NumberFormat = ""
+                    level_obj.NumberStyle = wc.wdListNumberStyleNone
+                except:
+                    pass
+            # 仅将目标级别链接到样式，不波及其它级别
+            empty_template.ListLevels(level).LinkedStyle = style
+        except Exception as ex:
+            print(f"移除编号时出错: {ex}")
     
     def set_images_and_tables(self, wrap_as_inline=True):
         if self.work_doc is None:
@@ -356,6 +423,32 @@ class SetDocumentFormat:
         for table in self.work_doc.Tables:
             try:
                 table.AutoFitBehavior(wc.wdAutoFitWindow)
+            except:
+                pass
+
+    def add_image_border(self):
+        """为所有图片添加1px宽度的黑色外框（始终执行，不受界面控件影响）"""
+        if self.work_doc is None:
+            return
+
+        # 处理嵌入式图片：设置黑色细线边框
+        for inline_shape in self.work_doc.InlineShapes:
+            if inline_shape.Type == wc.wdInlineShapePicture:
+                try:
+                    border = inline_shape.Borders
+                    border.Enable = True
+                    border.OutsideLineStyle = wc.wdLineStyleSingle
+                    border.OutsideLineWidth = wc.wdLineWidth025pt
+                    border.OutsideColor = wc.wdColorBlack
+                except:
+                    pass
+
+        # 处理浮动图片：设置黑色细线边框
+        for shape in self.work_doc.Shapes:
+            try:
+                shape.Line.Visible = True
+                shape.Line.Weight = 0.25
+                shape.Line.ForeColor.RGB = wc.wdColorBlack
             except:
                 pass
 
