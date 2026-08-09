@@ -292,17 +292,12 @@ class SetDocumentFormat:
                 pass
 
         # --- 确定 NumberFormat 与 NumberStyle ---
+        # 统一使用 \". \"（点号+空格）作为序号分隔符
         if number_style == "一.":
-            fmt = f"%{target_level}."
-            ns = wc.wdListNumberStyleSimpChinNum
-        elif number_style == "一）":
-            fmt = f"%{target_level}）"
+            fmt = f"%{target_level}. "
             ns = wc.wdListNumberStyleSimpChinNum
         elif number_style == "1.":
-            fmt = f"%{target_level}."
-            ns = wc.wdListNumberStyleArabic
-        elif number_style == "1)":
-            fmt = f"%{target_level})"
+            fmt = f"%{target_level}. "
             ns = wc.wdListNumberStyleArabic
         elif number_style == "①":
             fmt = f"%{target_level}"

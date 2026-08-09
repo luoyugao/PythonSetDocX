@@ -165,7 +165,7 @@ def detect_number_prefix(text):
     Returns:
         (prefix, style_name, char_type) 三元组：
         - prefix: str — 检测到的序号前缀文本
-        - style_name: str — Word自动编号样式名（"1." / "1)" / "一." / "一）" / "①"）
+        - style_name: str — Word自动编号样式名（"1." / "一." / "①"）
         - char_type: str — 序号字符类别标识
         若未检测到序号则返回 (None, None, None)
     """
@@ -298,43 +298,22 @@ def _detect_num_sep_form(stripped):
 def _classify_to_style(char_type, sep):
     """根据序号字符类型和分隔符，返回Word自动编号样式名。
 
+    统一使用 \". \"（点号+空格）作为分隔符。
+
     可用样式：
       - "1."   → 阿拉伯数字 + 点号
-      - "1)"   → 阿拉伯数字 + 右括号
       - "一."  → 中文数字 + 点号
-      - "一）" → 中文数字 + 右括号
       - "①"   → 圈号数字
     """
-    sep_norm = _to_half(sep)
-
-    # 阿拉伯数字类
-    if char_type == 'arabic':
-        return '1)' if sep_norm in _SEP_PAREN_R else '1.'
-
-    # 中文数字 / 天干 / 地支 → 归入中文风格
-    if char_type in ('chinese_num', 'heavenly_stem', 'earthly_branch'):
-        if sep_norm in _SEP_PAREN_R:
-            return '一）'
-        else:
-            return '一.'
-
-    # 字母类（大写/小写英文）
-    if char_type in ('upper_alpha', 'lower_alpha'):
-        return '1)' if sep_norm in _SEP_PAREN_R else '1.'
-
-    # 罗马数字
-    if char_type in ('roman_upper', 'roman_lower'):
-        return '1)' if sep_norm in _SEP_PAREN_R else '1.'
-
-    # 希腊字母
-    if char_type in ('greek_upper', 'greek_lower'):
-        return '1)' if sep_norm in _SEP_PAREN_R else '1.'
-
     # 圈号类
     if char_type in ('circled_num', 'circled_upper', 'circled_lower'):
         return '①'
 
-    # 默认
+    # 中文数字 / 天干 / 地支 → 归入中文风格
+    if char_type in ('chinese_num', 'heavenly_stem', 'earthly_branch'):
+        return '一.'
+
+    # 其它所有类型（阿拉伯数字、字母、罗马数字、希腊字母等）统一用点号分隔
     return '1.'
 
 
@@ -447,7 +426,7 @@ class AutoNumbering:
 
         Args:
             level: 标题级别 (1~5)
-            number_style: 编号样式名 ("1." / "1)" / "一." / "一）" / "①")
+            number_style: 编号样式名 ("1." / "一." / "①")
         """
         try:
             style_names = [f"标题 {level}", f"标题{level}"]
@@ -474,18 +453,13 @@ class AutoNumbering:
                     pass
 
             # --- 确定 NumberFormat 与 NumberStyle ---
+            # 统一使用 \". \"（点号+空格）作为序号分隔符
             if number_style == "一.":
-                fmt = f"%{level}."
+                fmt = f"%{level}. "
                 ns = 37  # wdListNumberStyleSimpChinNum
-            elif number_style == "一）":
-                fmt = f"%{level}）"
-                ns = 37
             elif number_style == "1.":
-                fmt = f"%{level}."
+                fmt = f"%{level}. "
                 ns = 0  # wdListNumberStyleArabic
-            elif number_style == "1)":
-                fmt = f"%{level})"
-                ns = 0
             elif number_style == "①":
                 fmt = f"%{level}"
                 ns = 18  # wdListNumberStyleNumberInCircle
