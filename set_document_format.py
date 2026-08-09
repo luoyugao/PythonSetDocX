@@ -7,7 +7,7 @@ from word_constants import set_range_style, get_range_information, get_range_sty
 class SetDocumentFormat:
     def __init__(self, full_name=None, doc=None):
         self.work_doc = None
-        self.custom_list_templates = {}
+        self.level_list_templates = {}
         if doc is not None:
             self.work_doc = doc
             print(f"正在激活文档：{self.work_doc.FullName}")
@@ -17,15 +17,6 @@ class SetDocumentFormat:
             from universal import Universal
             self.work_doc = Universal().get_active_word_app().Documents[full_name]
             self.work_doc.Activate()
-    
-    def _get_custom_list_template(self, number_style):
-        if number_style not in self.custom_list_templates:
-            list_template = self.work_doc.ListTemplates.Add(True)
-            level_1 = list_template.ListLevels(1)
-            level_1.NumberFormat = '资料%1. '
-            level_1.NumberStyle = wc.wdListNumberStyleArabic
-            self.custom_list_templates[number_style] = list_template
-        return self.custom_list_templates[number_style]
     
     def set_page_margins(self, top, bottom, left, right):
         if self.work_doc is None:
@@ -232,10 +223,19 @@ class SetDocumentFormat:
             if number_style is not None:
                 if number_style == "无序号":
                     self._remove_numbering_from_style(style, level)
+                    self.level_list_templates.pop(level, None)
                 else:
                     list_template = self._create_single_level_template(number_style, level)
                     if list_template is not None:
-                        list_template.ListLevels(level).LinkedStyle = style
+                        self.level_list_templates[level] = list_template
+                        # 用 LinkToListTemplate 显式覆盖样式已有的列表模板链接
+                        # （中文 Word 内置"标题 N"样式预链接了多级列表模板，
+                        #  仅设置 template.ListLevels(level).LinkedStyle 无法覆盖）
+                        try:
+                            style.LinkToListTemplate(
+                                ListTemplate=list_template, ListLevelNumber=level)
+                        except Exception:
+                            list_template.ListLevels(level).LinkedStyle = style
 
             style.Font.Bold = 1
             return style
@@ -258,10 +258,16 @@ class SetDocumentFormat:
                     if level >= 1:
                         if number_style == "无序号":
                             self._remove_numbering_from_style(style, level)
+                            self.level_list_templates.pop(level, None)
                         else:
                             list_template = self._create_single_level_template(number_style, level)
                             if list_template is not None:
-                                list_template.ListLevels(level).LinkedStyle = style
+                                self.level_list_templates[level] = list_template
+                                try:
+                                    style.LinkToListTemplate(
+                                        ListTemplate=list_template, ListLevelNumber=level)
+                                except Exception:
+                                    list_template.ListLevels(level).LinkedStyle = style
 
                 style.Font.Bold = 1
                 set_range_style(para.Range, style)
@@ -271,66 +277,62 @@ class SetDocumentFormat:
     def _create_single_level_template(self, number_style, target_level):
         """创建一个全新的列表模板，仅配置指定级别的编号格式。
 
-        不使用 wdOutlineNumberGallery 中的预配置多级模板（它们已预设全部9级
-        的 LinkedStyle，会导致其他标题级别被连带修改），而是创建空白模板，
-        仅从图库模板中复制目标级别的格式参数。
+        先清空全部9级，再设置目标级别和第1级（作为 ApplyListTemplate
+        无级别参数时 Word 默认使用第1级的安全兜底）。
         """
-        # 创建全新的空白列表模板（所有级别均无格式）
         list_template = self.work_doc.ListTemplates.Add(True)
 
-        # 获取图库模板，仅用于读取参考格式
-        list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
+        # --- 先清空全部9级，防止模板自带默认格式或 Word 自动填充 ---
+        for lvl in range(1, 10):
+            try:
+                level_obj = list_template.ListLevels(lvl)
+                level_obj.NumberFormat = ""
+                level_obj.NumberStyle = wc.wdListNumberStyleNone
+            except:
+                pass
 
-        ref_template = None
+        # --- 确定 NumberFormat 与 NumberStyle ---
         if number_style == "一.":
-            ref_template = list_gallery.ListTemplates(1)
+            fmt = f"%{target_level}."
+            ns = wc.wdListNumberStyleSimpChinNum
         elif number_style == "一）":
-            ref_template = list_gallery.ListTemplates(2)
+            fmt = f"%{target_level}）"
+            ns = wc.wdListNumberStyleSimpChinNum
         elif number_style == "1.":
-            ref_template = list_gallery.ListTemplates(3)
+            fmt = f"%{target_level}."
+            ns = wc.wdListNumberStyleArabic
         elif number_style == "1)":
-            ref_template = list_gallery.ListTemplates(4)
+            fmt = f"%{target_level})"
+            ns = wc.wdListNumberStyleArabic
         elif number_style == "①":
-            ref_template = list_gallery.ListTemplates(5)
+            fmt = f"%{target_level}"
+            ns = wc.wdListNumberStyleNumberInCircle
         elif number_style == "资料1. ":
-            # "资料1. "已经使用自定义模板，其级别格式是我们自己设置的，
-            # 但为了一致性（避免该模板其他级别可能存在的连锁影响），
-            # 仍然创建一个全新的模板
-            ref_template = self._get_custom_list_template(number_style)
-
-        if ref_template is None:
+            fmt = f"资料%{target_level}. "
+            ns = wc.wdListNumberStyleArabic
+        else:
             return None
 
-        # 从参考模板复制目标级别（始终取 level 1）的格式到新模板的 target_level
-        ref_level_obj = ref_template.ListLevels(1)
-        target_level_obj = list_template.ListLevels(target_level)
-
-        target_level_obj.NumberFormat = ref_level_obj.NumberFormat
-        target_level_obj.NumberStyle = ref_level_obj.NumberStyle
-        try:
-            target_level_obj.NumberPosition = ref_level_obj.NumberPosition
-        except:
-            pass
-        try:
-            target_level_obj.Alignment = ref_level_obj.Alignment
-        except:
-            pass
-        try:
-            target_level_obj.TrailingCharacter = ref_level_obj.TrailingCharacter
-        except:
-            pass
-        try:
-            target_level_obj.TabPosition = ref_level_obj.TabPosition
-        except:
-            pass
-        try:
-            target_level_obj.ResetOnHigher = ref_level_obj.ResetOnHigher
-        except:
-            pass
-        try:
-            target_level_obj.StartAt = ref_level_obj.StartAt
-        except:
-            pass
+        # --- 同时设置目标级别和第1级 ---
+        # 目标级别：供 ApplyListTemplateWithLevel 明确指定
+        # 第1级：作为 ApplyListTemplate 无级别参数时 Word 默认使用第1级的安全兜底
+        for lvl in (1, target_level):
+            level_obj = list_template.ListLevels(lvl)
+            level_obj.NumberFormat = fmt
+            level_obj.NumberStyle = ns
+            # 从图库模板中获取通用布局参数
+            try:
+                list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
+                ref_template = list_gallery.ListTemplates(1)
+                ref_level_obj = ref_template.ListLevels(1)
+                for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
+                             'TabPosition', 'ResetOnHigher', 'StartAt'):
+                    try:
+                        setattr(level_obj, attr, getattr(ref_level_obj, attr))
+                    except:
+                        pass
+            except:
+                pass
 
         return list_template
 
@@ -352,8 +354,12 @@ class SetDocumentFormat:
                     level_obj.NumberStyle = wc.wdListNumberStyleNone
                 except:
                     pass
-            # 仅将目标级别链接到样式，不波及其它级别
-            empty_template.ListLevels(level).LinkedStyle = style
+            # 用 LinkToListTemplate 显式覆盖样式已有的列表模板链接
+            try:
+                style.LinkToListTemplate(
+                    ListTemplate=empty_template, ListLevelNumber=level)
+            except Exception:
+                empty_template.ListLevels(level).LinkedStyle = style
         except Exception as ex:
             print(f"移除编号时出错: {ex}")
     

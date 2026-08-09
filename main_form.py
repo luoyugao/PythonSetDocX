@@ -1062,6 +1062,9 @@ class MainForm:
         # 记录用户选择了"无序号"的级别（索引0-4），这些级别的段落需要
         # 在样式链接修复之外，额外调用 RemoveNumbers() 强制清除编号
         no_number_levels = set()
+        # 记录用户设置了具体序号样式（非"无序号"、非"不变更"）的级别，
+        # 这些级别的段落需要先清除已有编号再应用新样式，确保旧编号被替换
+        replace_numbering_levels = set()
 
         try:
             # 获取文档对象，优先使用格式设置对象中的文档，其次使用当前工作文档
@@ -1110,6 +1113,8 @@ class MainForm:
                             number_style = None
                         else:
                             number_style = number_style_raw
+                            # 标记该级别需要替换已有编号（先清除旧编号再应用新样式）
+                            replace_numbering_levels.add(level_index - 1)
                         if not indent or indent == "不变更":
                             indent = None
 
@@ -1118,9 +1123,54 @@ class MainForm:
                             level_styles[level_index - 1] = set_doc_format.set_title_styles(
                                 level_index, font, font_size, number_style, indent)
 
+                    # 对于需要替换编号的级别：先清除段落已有的直接列表格式，
+                    # 再应用新样式，最后直接应用列表模板到段落范围。
+                    # 中文 Word 内置"标题 N"样式预链接了带中文编号的多级模板，
+                    # 仅靠样式链接不足以覆盖；必须在段落级别三重操作确保生效。
+                    if (level_index - 1) in replace_numbering_levels:
+                        try:
+                            paragraph.Range.ListFormat.RemoveNumbers()
+                        except:
+                            pass
+
                     # 应用样式到段落
                     if level_styles[level_index - 1] is not None:
                         set_range_style(paragraph.Range, level_styles[level_index - 1])
+
+                    # 直接应用列表模板到段落范围（确保编号立即生效）。
+                    # ApplyListTemplate 不指定级别时 Word 默认用第1级，
+                    # 而第1级已被清空，因此必须用 ApplyListTemplateWithLevel
+                    # 明确指定目标级别，并加入多重兼容回退。
+                    if (level_index - 1) in replace_numbering_levels:
+                        list_template = set_doc_format.level_list_templates.get(level_index)
+                        if list_template is not None:
+                            applied = False
+                            # 方案1：ApplyListTemplateWithLevel 命名参数
+                            try:
+                                paragraph.Range.ListFormat.ApplyListTemplateWithLevel(
+                                    ListTemplate=list_template,
+                                    ContinuePreviousList=True,
+                                    ApplyTo=2,
+                                    DefaultListBehavior=1,
+                                    ListLevel=level_index)
+                                applied = True
+                            except Exception:
+                                pass
+                            # 方案2：ApplyListTemplateWithLevel 位置参数
+                            if not applied:
+                                try:
+                                    paragraph.Range.ListFormat.ApplyListTemplateWithLevel(
+                                        list_template, True, 2, 1, level_index)
+                                    applied = True
+                                except Exception:
+                                    pass
+                            # 方案3：简单 ApplyListTemplate（位置参数）
+                            if not applied:
+                                try:
+                                    paragraph.Range.ListFormat.ApplyListTemplate(
+                                        list_template, True)
+                                except Exception:
+                                    pass
 
                     # 对于"无序号"级别：在样式链接修复之外，还要直接清除段落的列表编号。
                     # Word 对已应用同一样式名的段落可能不会重新评估列表模板链接，

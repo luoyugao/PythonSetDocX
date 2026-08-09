@@ -51,6 +51,8 @@ wdLineStyleSingle = 1
 wdLineWidth025pt = 2
 wdColorBlack = 0
 
+wdListNumberStyleSimpChinNum = 37
+wdListNumberStyleNumberInCircle = 18
 wdListNumberStyleNone = 255
 
 

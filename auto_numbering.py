@@ -298,12 +298,12 @@ def _detect_num_sep_form(stripped):
 def _classify_to_style(char_type, sep):
     """根据序号字符类型和分隔符，返回Word自动编号样式名。
 
-    可用样式（对应 wdOutlineNumberGallery 图库模板）：
-      - "1."   → 阿拉伯数字 + 点号（图库模板3）
-      - "1)"   → 阿拉伯数字 + 右括号（图库模板4）
-      - "一."  → 中文数字 + 顿号/点号（图库模板1）
-      - "一）" → 中文数字 + 右括号（图库模板2）
-      - "①"   → 圈号数字（图库模板5）
+    可用样式：
+      - "1."   → 阿拉伯数字 + 点号
+      - "1)"   → 阿拉伯数字 + 右括号
+      - "一."  → 中文数字 + 点号
+      - "一）" → 中文数字 + 右括号
+      - "①"   → 圈号数字
     """
     sep_norm = _to_half(sep)
 
@@ -350,15 +350,6 @@ class AutoNumbering:
         count = converter.convert_all()
         print(f"已转换 {count} 个标题")
     """
-
-    # 可用的Word自动编号样式 → 图库模板索引映射
-    STYLE_TO_GALLERY_INDEX = {
-        '一.':  1,
-        '一）': 2,
-        '1.':   3,
-        '1)':   4,
-        '①':   5,
-    }
 
     def __init__(self, doc):
         """初始化转换器。
@@ -451,14 +442,14 @@ class AutoNumbering:
     def _link_list_template(self, level, number_style):
         """为指定级别的"标题 N"样式链接自动编号列表模板。
 
-        仅修改目标级别的LinkedStyle，不波及其它标题级别。
+        先清空全部9级，再设置目标级别和第1级（安全兜底），
+        使用 LinkToListTemplate 显式覆盖样式已有的列表模板链接。
 
         Args:
             level: 标题级别 (1~5)
             number_style: 编号样式名 ("1." / "1)" / "一." / "一）" / "①")
         """
         try:
-            # 尝试两种样式名："标题 1"（标准）和 "标题1"（紧凑变体）
             style_names = [f"标题 {level}", f"标题{level}"]
             style = None
             for sn in style_names:
@@ -471,33 +462,64 @@ class AutoNumbering:
             if style is None:
                 return
 
-            # 获取参考图库模板
-            gallery_idx = self.STYLE_TO_GALLERY_INDEX.get(number_style)
-            if gallery_idx is None:
-                return
-
-            list_gallery = wc.get_list_gallery(
-                self.work_doc.Application, wc.wdOutlineNumberGallery)
-            ref_template = list_gallery.ListTemplates(gallery_idx)
-
-            # 创建全新的列表模板（仅配置目标级别，避免波及其它级别）
             list_template = self.work_doc.ListTemplates.Add(True)
 
-            # 从参考模板复制目标级别（始终取 level 1 的格式参数）
-            ref_level = ref_template.ListLevels(1)
-            target_level = list_template.ListLevels(level)
-
-            target_level.NumberFormat = ref_level.NumberFormat
-            target_level.NumberStyle = ref_level.NumberStyle
-            for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
-                         'TabPosition', 'ResetOnHigher', 'StartAt'):
+            # --- 先清空全部9级 ---
+            for lvl in range(1, 10):
                 try:
-                    setattr(target_level, attr, getattr(ref_level, attr))
+                    level_obj = list_template.ListLevels(lvl)
+                    level_obj.NumberFormat = ""
+                    level_obj.NumberStyle = 255  # wdListNumberStyleNone
+                except:
+                    pass
+
+            # --- 确定 NumberFormat 与 NumberStyle ---
+            if number_style == "一.":
+                fmt = f"%{level}."
+                ns = 37  # wdListNumberStyleSimpChinNum
+            elif number_style == "一）":
+                fmt = f"%{level}）"
+                ns = 37
+            elif number_style == "1.":
+                fmt = f"%{level}."
+                ns = 0  # wdListNumberStyleArabic
+            elif number_style == "1)":
+                fmt = f"%{level})"
+                ns = 0
+            elif number_style == "①":
+                fmt = f"%{level}"
+                ns = 18  # wdListNumberStyleNumberInCircle
+            elif number_style == "资料1. ":
+                fmt = f"资料%{level}. "
+                ns = 0
+            else:
+                return
+
+            # --- 同时设置目标级别和第1级作为安全兜底 ---
+            for lvl in (1, level):
+                target_level = list_template.ListLevels(lvl)
+                target_level.NumberFormat = fmt
+                target_level.NumberStyle = ns
+                try:
+                    list_gallery = wc.get_list_gallery(
+                        self.work_doc.Application, wc.wdOutlineNumberGallery)
+                    ref_template = list_gallery.ListTemplates(1)
+                    ref_level = ref_template.ListLevels(1)
+                    for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
+                                 'TabPosition', 'ResetOnHigher', 'StartAt'):
+                        try:
+                            setattr(target_level, attr, getattr(ref_level, attr))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 
-            # 将目标级别链接到"标题 N"样式
-            target_level.LinkedStyle = style
+            # 使用 LinkToListTemplate 显式覆盖样式已有的列表模板链接
+            try:
+                style.LinkToListTemplate(
+                    ListTemplate=list_template, ListLevelNumber=level)
+            except Exception:
+                list_template.ListLevels(level).LinkedStyle = style
 
         except Exception as ex:
             import traceback
