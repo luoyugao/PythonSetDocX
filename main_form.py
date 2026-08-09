@@ -9,6 +9,55 @@ import doc_parameters_manager as dpm
 from universal import Universal
 from word_constants import set_range_style, get_range_style
 import set_document_format
+from auto_numbering import AutoNumbering
+
+
+class ToolTip:
+    """为 tkinter/ttk 控件提供鼠标悬停提示文字"""
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        widget.bind('<Enter>', self._on_enter)
+        widget.bind('<Leave>', self._on_leave)
+
+    def _on_enter(self, event=None):
+        self._schedule()
+
+    def _on_leave(self, event=None):
+        self._unschedule()
+        self._hide()
+
+    def _schedule(self):
+        self._unschedule()
+        self._schedule_id = self.widget.after(500, self._show)
+
+    def _unschedule(self):
+        sid = getattr(self, '_schedule_id', None)
+        if sid:
+            self.widget.after_cancel(sid)
+            self._schedule_id = None
+
+    def _show(self):
+        if self.tip_window:
+            return
+        x = self.widget.winfo_rootx() + 10
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 2
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f'+{x}+{y}')
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                         background='#FFFFC8', foreground='#333333',
+                         relief=tk.SOLID, borderwidth=1,
+                         font=('TkDefaultFont', 9))
+        label.pack()
+
+    def _hide(self):
+        tw = self.tip_window
+        self.tip_window = None
+        if tw:
+            tw.destroy()
 
 
 class MainForm:
@@ -251,13 +300,18 @@ class MainForm:
         ttk.Checkbutton(inner_frame, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton").grid(
             row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
         
-        # 升级/降级按钮行（短标签）
+        # 转自动序号、标题升级、标题降级按钮行
         btn_frame = ttk.Frame(inner_frame)
-        btn_frame.grid(row=0, column=0, columnspan=5, pady=3, sticky=tk.E)
-        self.btn_title_level_up = ttk.Button(btn_frame, text="各级标题升一级", command=self._on_title_level_up)
+        btn_frame.grid(row=1, column=0, columnspan=5, pady=3, sticky=tk.E)
+        self.btn_convert_auto_number = ttk.Button(btn_frame, text="转自动序号", width=10, command=self._on_convert_to_auto_numbering)
+        self.btn_convert_auto_number.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.btn_convert_auto_number, "将所有标题的手动序号转换为自动序号")
+        self.btn_title_level_up = ttk.Button(btn_frame, text="标题升级", width=8, command=self._on_title_level_up)
         self.btn_title_level_up.pack(side=tk.LEFT, padx=2)
-        self.btn_title_level_down = ttk.Button(btn_frame, text="各级标题降一级", command=self._on_title_level_down)
+        ToolTip(self.btn_title_level_up, "各级标题升一级")
+        self.btn_title_level_down = ttk.Button(btn_frame, text="标题降级", width=8, command=self._on_title_level_down)
         self.btn_title_level_down.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.btn_title_level_down, "各级标题降一级")
         
         # 表头行
         headers = ["标题级别", "字体", "字号", "序号样式", "缩进方式"]
@@ -1288,7 +1342,21 @@ class MainForm:
             self.status_bar.config(text="所有标题已降一级")
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
-    
+
+    def _on_convert_to_auto_numbering(self):
+        """将标题中的手动序号转换为Word自动序号"""
+        if self.work_doc is None:
+            messagebox.showwarning("警告", "请先选择一个文档")
+            return
+
+        try:
+            converted = AutoNumbering(self.work_doc).convert_all()
+            self.status_bar.config(text=f"已转换 {converted} 个标题为自动序号")
+            if converted == 0:
+                messagebox.showinfo("提示", "未找到需要转换的手动序号标题")
+        except Exception as ex:
+            messagebox.showerror("错误", f"转换失败: {ex}")
+
     def _on_delete_all_pictures(self):
         """删除文档中所有图片"""
         if self.work_doc is None:
