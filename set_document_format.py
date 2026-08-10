@@ -8,6 +8,8 @@ class SetDocumentFormat:
     def __init__(self, full_name=None, doc=None):
         self.work_doc = None
         self.level_list_templates = {}
+        # 共享的多级列表模板（所有标题级别共用，使 ResetOnHigher 生效）
+        self._master_template = None
         if doc is not None:
             self.work_doc = doc
             print(f"正在激活文档：{self.work_doc.FullName}")
@@ -275,61 +277,75 @@ class SetDocumentFormat:
                 print(f"设置标题样式时出错: {ex}")
 
     def _create_single_level_template(self, number_style, target_level):
-        """创建一个全新的列表模板，仅配置指定级别的编号格式。
+        """在共享列表模板中配置指定级别的编号格式。
 
-        先清空全部9级，再设置目标级别和第1级（作为 ApplyListTemplate
-        无级别参数时 Word 默认使用第1级的安全兜底）。
+        所有标题级别共用同一个 ListTemplate，使 Word 的 ResetOnHigher
+        能够正确地在上级标题出现时重置子级编号。
+
+        首次调用时创建共享模板并清空全部9级；后续调用仅配置目标级别。
         """
-        list_template = self.work_doc.ListTemplates.Add(True)
-
-        # --- 先清空全部9级，防止模板自带默认格式或 Word 自动填充 ---
-        for lvl in range(1, 10):
-            try:
-                level_obj = list_template.ListLevels(lvl)
-                level_obj.NumberFormat = ""
-                level_obj.NumberStyle = wc.wdListNumberStyleNone
-            except:
-                pass
+        # 首次调用时创建共享模板
+        if self._master_template is None:
+            self._master_template = self.work_doc.ListTemplates.Add(True)
+            # 清空全部9级，防止模板自带默认格式或 Word 自动填充
+            for lvl in range(1, 10):
+                try:
+                    level_obj = self._master_template.ListLevels(lvl)
+                    level_obj.NumberFormat = ""
+                    level_obj.NumberStyle = wc.wdListNumberStyleNone
+                except:
+                    pass
 
         # --- 确定 NumberFormat 与 NumberStyle ---
         # 统一使用 \". \"（点号+空格）作为序号分隔符
+        # NumberFormat 中不包含尾随空格，通过 TrailingCharacter=wdTrailingSpace 添加
         if number_style == "一.":
-            fmt = f"%{target_level}. "
+            fmt = f"%{target_level}."
             ns = wc.wdListNumberStyleSimpChinNum
         elif number_style == "1.":
-            fmt = f"%{target_level}. "
+            fmt = f"%{target_level}."
             ns = wc.wdListNumberStyleArabic
         elif number_style == "①":
             fmt = f"%{target_level}"
             ns = wc.wdListNumberStyleNumberInCircle
         elif number_style == "资料1. ":
-            fmt = f"资料%{target_level}. "
+            fmt = f"资料%{target_level}."
             ns = wc.wdListNumberStyleArabic
         else:
             return None
 
-        # --- 同时设置目标级别和第1级 ---
-        # 目标级别：供 ApplyListTemplateWithLevel 明确指定
-        # 第1级：作为 ApplyListTemplate 无级别参数时 Word 默认使用第1级的安全兜底
-        for lvl in (1, target_level):
-            level_obj = list_template.ListLevels(lvl)
-            level_obj.NumberFormat = fmt
-            level_obj.NumberStyle = ns
-            # 从图库模板中获取通用布局参数
-            try:
-                list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
-                ref_template = list_gallery.ListTemplates(1)
-                ref_level_obj = ref_template.ListLevels(1)
-                for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
-                             'TabPosition', 'ResetOnHigher', 'StartAt'):
-                    try:
-                        setattr(level_obj, attr, getattr(ref_level_obj, attr))
-                    except:
-                        pass
-            except:
-                pass
+        # --- 仅配置目标级别，不做跨级兜底，避免互相覆盖 ---
+        level_obj = self._master_template.ListLevels(target_level)
+        level_obj.NumberFormat = fmt
+        level_obj.NumberStyle = ns
+        # 从图库模板中获取通用布局参数
+        try:
+            list_gallery = get_list_gallery(self.work_doc.Application, wc.wdOutlineNumberGallery)
+            ref_template = list_gallery.ListTemplates(1)
+            ref_level_obj = ref_template.ListLevels(1)
+            for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
+                         'TabPosition', 'ResetOnHigher', 'StartAt'):
+                try:
+                    setattr(level_obj, attr, getattr(ref_level_obj, attr))
+                except:
+                    pass
+        except:
+            pass
+        # 强制覆写关键属性，确保序号行为一致
+        try:
+            level_obj.TrailingCharacter = wc.wdTrailingSpace
+        except:
+            pass
+        try:
+            level_obj.StartAt = 1
+        except:
+            pass
+        try:
+            level_obj.ResetOnHigher = True
+        except:
+            pass
 
-        return list_template
+        return self._master_template
 
     def _remove_numbering_from_style(self, style, level):
         """移除指定样式的编号（实现"无序号"功能）。
@@ -432,15 +448,23 @@ class SetDocumentFormat:
         if self.work_doc is None:
             return
 
-        # 处理嵌入式图片：设置黑色细线边框
+        border_edges = [wc.wdBorderTop, wc.wdBorderLeft,
+                        wc.wdBorderBottom, wc.wdBorderRight]
+
+        # 处理嵌入式图片：逐条边设置黑色细线边框
         for inline_shape in self.work_doc.InlineShapes:
             if inline_shape.Type == wc.wdInlineShapePicture:
                 try:
-                    border = inline_shape.Borders
-                    border.Enable = True
-                    border.OutsideLineStyle = wc.wdLineStyleSingle
-                    border.OutsideLineWidth = wc.wdLineWidth025pt
-                    border.OutsideColor = wc.wdColorBlack
+                    borders = inline_shape.Borders
+                    borders.Enable = True
+                    for edge in border_edges:
+                        try:
+                            b = borders(edge)
+                            b.LineStyle = wc.wdLineStyleSingle
+                            b.LineWidth = wc.wdLineWidth075pt
+                            b.Color = wc.wdColorBlack
+                        except:
+                            pass
                 except:
                     pass
 
@@ -448,7 +472,7 @@ class SetDocumentFormat:
         for shape in self.work_doc.Shapes:
             try:
                 shape.Line.Visible = True
-                shape.Line.Weight = 0.25
+                shape.Line.Weight = 1.0
                 shape.Line.ForeColor.RGB = wc.wdColorBlack
             except:
                 pass

@@ -163,57 +163,59 @@ def detect_number_prefix(text):
         text: 段落文本（可含末尾 \\r）
 
     Returns:
-        (prefix, style_name, char_type) 三元组：
+        (prefix, style_name, char_type, is_first) 四元组：
         - prefix: str — 检测到的序号前缀文本
         - style_name: str — Word自动编号样式名（"1." / "一." / "①"）
         - char_type: str — 序号字符类别标识
-        若未检测到序号则返回 (None, None, None)
+        - is_first: bool — 是否为该序号体系中的第一个元素
+        若未检测到序号则返回 (None, None, None, None)
     """
     if not text:
-        return None, None, None
+        return None, None, None, None
 
     # 去除末尾段落标记（\r、\x07 等Word内部字符）
     clean = text.rstrip('\r\n\x07')
     if not clean:
-        return None, None, None
+        return None, None, None, None
 
     # 去除开头的空白，记录空白长度
     stripped = clean.lstrip()
     leading_ws_len = len(clean) - len(stripped)
 
     if not stripped:
-        return None, None, None
+        return None, None, None, None
 
     result = None
 
     # ---- 模式1：括号包围形式  (1) （一） (a) （Ａ） 等 ----
     result = _detect_paren_form(stripped)
     if result:
-        inner_prefix, style, ctype = result
+        inner_prefix, style, ctype, is_first = result
         prefix = clean[:leading_ws_len] + inner_prefix
-        return prefix, style, ctype
+        return prefix, style, ctype, is_first
 
     # ---- 模式2：资料N. 特殊前缀 ----
     result = _detect_ziliao_form(stripped)
     if result:
-        inner_prefix, style, ctype = result
+        inner_prefix, style, ctype, is_first = result
         prefix = clean[:leading_ws_len] + inner_prefix
-        return prefix, style, ctype
+        return prefix, style, ctype, is_first
 
     # ---- 模式3：圈号单字符序号（①②③…、ⓐⓑⓒ…） ----
     c0 = _classify(stripped[0])
     if c0 in ('circled_num', 'circled_upper', 'circled_lower'):
         prefix = clean[:leading_ws_len] + stripped[0]
-        return prefix, '①', c0
+        is_first = _is_first_in_sequence(stripped[0], c0)
+        return prefix, '①', c0, is_first
 
     # ---- 模式4：数字/字母序列 + 可选分隔符 ----
     result = _detect_num_sep_form(stripped)
     if result:
-        inner_prefix, style, ctype = result
+        inner_prefix, style, ctype, is_first = result
         prefix = clean[:leading_ws_len] + inner_prefix
-        return prefix, style, ctype
+        return prefix, style, ctype, is_first
 
-    return None, None, None
+    return None, None, None, None
 
 
 def _detect_paren_form(stripped):
@@ -238,7 +240,8 @@ def _detect_paren_form(stripped):
 
     full_prefix = m.group()
     style = _classify_to_style(inner_cls, ')')
-    return full_prefix, style, inner_cls
+    is_first = _is_first_in_sequence(inner, inner_cls)
+    return full_prefix, style, inner_cls, is_first
 
 
 def _detect_ziliao_form(stripped):
@@ -247,8 +250,10 @@ def _detect_ziliao_form(stripped):
     if not m:
         return None
 
+    digits = m.group(1)
     full_prefix = m.group()
-    return full_prefix, '资料1. ', 'arabic'
+    is_first = _is_first_in_sequence(digits, 'arabic')
+    return full_prefix, '资料1. ', 'arabic', is_first
 
 
 def _detect_num_sep_form(stripped):
@@ -292,7 +297,8 @@ def _detect_num_sep_form(stripped):
 
     full_prefix = stripped[:num_end + sep_offset]
     style = _classify_to_style(first_cls, sep if sep else '、')
-    return full_prefix, style, first_cls
+    is_first = _is_first_in_sequence(num_part, first_cls)
+    return full_prefix, style, first_cls, is_first
 
 
 def _classify_to_style(char_type, sep):
@@ -317,6 +323,39 @@ def _classify_to_style(char_type, sep):
     return '1.'
 
 
+_FIRST_IN_SEQUENCE = {
+    'arabic':        '1',
+    'chinese_num':   '一',
+    'heavenly_stem': '甲',
+    'earthly_branch':'子',
+    'upper_alpha':   'A',
+    'lower_alpha':   'a',
+    'roman_upper':   'Ⅰ',
+    'roman_lower':   'ⅰ',
+    'greek_upper':   'Α',
+    'greek_lower':   'α',
+    'circled_num':   '①',
+    'circled_upper': 'Ⓐ',
+    'circled_lower': 'ⓐ',
+}
+
+
+def _is_first_in_sequence(num_text, char_type):
+    """判断序号文本是否为其体系中的第一个元素。
+
+    对于字母类和阿拉伯数字，必须归一化为半角后再比较。
+    """
+    if not num_text or char_type is None:
+        return False
+    first = _FIRST_IN_SEQUENCE.get(char_type)
+    if first is None:
+        return False
+    # 字母/数字类：归一化后比较；中文/罗马等：直接比较
+    if char_type in ('arabic', 'upper_alpha', 'lower_alpha'):
+        return _to_half(num_text) == _to_half(first)
+    return num_text == first
+
+
 # ============================================================
 # 主类：与Word文档交互
 # ============================================================
@@ -337,16 +376,41 @@ class AutoNumbering:
             doc: Word Document COM对象
         """
         self.work_doc = doc
-        # 记录已为各级别设置的编号样式，避免重复创建列表模板
-        self._level_styles_set = {}
+        # 记录已链接过模板的级别，避免重复 link
+        self._level_linked = set()
+        # 共享的多级列表模板（所有标题级别共用，使 ResetOnHigher 在同一列表实例内生效）
+        self._master_template = None
+
+    def _parse_level(self, para):
+        """从段落中提取标题级别，失败返回 None。
+
+        优先用 OutlineLevel；若未设置则通过样式名（"标题 N"）推导。
+        """
+        level = para.OutlineLevel
+        if 1 <= level <= 5:
+            return level
+        try:
+            from word_constants import get_range_style
+            sn = get_range_style(para).NameLocal
+            if '标题' not in sn:
+                return None
+            import re
+            m = re.search(r'(\d+)', sn)
+            if m:
+                level = int(m.group(1))
+                return level if 1 <= level <= 5 else None
+        except Exception:
+            pass
+        return None
 
     def convert_all(self):
         """遍历文档所有标题段落（大纲级别1~5），将手动序号转为自动编号。
 
-        对每个标题段落：
-          1. 调用 detect_number_prefix() 检测手动序号
-          2. 使用Range.Delete删除序号前缀文本
-          3. 为该级别标题样式链接对应的自动编号列表模板
+        策略（用户建议方案）：
+          1. 第一遍：删除手动序号前缀 + 为各级标题样式链接自动编号列表模板
+                    链接后 Word 自动为所有同样式标题生成连续递增的自动编号
+          2. 第二遍：将原文序号为"1"（体系首元素）的段落，通过 ListValue=1
+                     强制重新开始编号，断开与前列段落的连续关系
 
         Returns:
             int: 成功转换的段落数量
@@ -355,145 +419,146 @@ class AutoNumbering:
             return 0
 
         para_count = self.work_doc.Paragraphs.Count
-        converted = 0
+        # 记录需要重新开始编号的段落：(paragraph_index, level)
+        restart_paragraphs = []
+        para_converted = 0
 
+        # ---- 第一遍：删除前缀 + 链接样式模板 ----
         for i in range(1, para_count + 1):
             try:
                 para = self.work_doc.Paragraphs(i)
-
-                # 只处理大纲级别1~5的标题段落，同时兼容通过样式名识别的标题
-                level = para.OutlineLevel
-                if level < 1 or level > 5:
-                    # 回退：通过样式名判断（部分文档标题可能未正确设置大纲级别）
-                    try:
-                        from word_constants import get_range_style
-                        style_obj = get_range_style(para)
-                        style_name = style_obj.NameLocal
-                        if '标题' not in style_name:
-                            continue
-                        # 提取标题级别数字，如 "标题 1" → 1
-                        import re
-                        m = re.search(r'(\d+)', style_name)
-                        if m:
-                            level = int(m.group(1))
-                            if level < 1 or level > 5:
-                                continue
-                        else:
-                            continue
-                    except Exception:
-                        continue
-
+                level = self._parse_level(para)
+                if level is None:
+                    continue
                 text = para.Range.Text
                 if not text or not text.strip():
                     continue
-
-                # 检测手动序号前缀
-                prefix, style_name, _ = detect_number_prefix(text)
+                prefix, style_name, _, is_first = detect_number_prefix(text)
                 if prefix is None:
                     continue
 
                 # ---- 删除序号前缀文本 ----
-                # 通过复制段落Range并调整End位置来精确定位前缀区域，
-                # 然后删除该区域。相比直接设置Range.Text更安全，
-                # 不会意外影响段落标记或后续段落。
                 rng = para.Range.Duplicate
-                prefix_len_in_range = len(prefix)
-                # 防御：确保不超过段落文本长度（保留末尾段落标记）
-                max_delete = max(1, len(text) - 1)  # 至少保留 \r
-                if prefix_len_in_range > max_delete:
-                    prefix_len_in_range = max_delete
-                rng.End = rng.Start + prefix_len_in_range
+                p_len = min(len(prefix), max(1, len(text) - 1))
+                rng.End = rng.Start + p_len
                 rng.Delete()
 
-                # ---- 链接自动编号列表模板 ----
-                if level not in self._level_styles_set:
-                    self._link_list_template(level, style_name)
-                    self._level_styles_set[level] = style_name
+                # ---- 链接样式到列表模板（每级别仅执行一次） ----
+                if level not in self._level_linked:
+                    self._link_list_template_level(level, style_name)
+                    self._level_linked.add(level)
 
-                converted += 1
+                # ---- 记录原文为首元素的段落，稍后重启编号 ----
+                if is_first:
+                    restart_paragraphs.append((i, level))
+
+                para_converted += 1
 
             except Exception:
-                # 忽略单个段落的异常，继续处理后续段落
                 continue
 
-        return converted
+        if para_converted == 0:
+            return 0
 
-    def _link_list_template(self, level, number_style):
-        """为指定级别的"标题 N"样式链接自动编号列表模板。
+        # ---- 第二遍：对原文为首元素的段落，强制重新开始编号 ----
+        # style.LinkToListTemplate 建立后，Word 已为所有同样式标题生成
+        # 连续递增的自动编号。此处通过设置 ListValue=1 将指定段落强制
+        # 设为编号起点，等效于 Word 界面中的"重新开始编号"右键命令。
+        if restart_paragraphs:
+            for para_idx, _level in restart_paragraphs:
+                try:
+                    para = self.work_doc.Paragraphs(para_idx)
+                    # 防御：仅当段落确实处于编号列表中时才设置 ListValue
+                    if para.Range.ListFormat.ListType != 0:  # 0 = wdListNoNumbering
+                        para.Range.ListFormat.ListValue = 1
+                except Exception:
+                    pass
 
-        先清空全部9级，再设置目标级别和第1级（安全兜底），
-        使用 LinkToListTemplate 显式覆盖样式已有的列表模板链接。
+        return para_converted
 
-        Args:
-            level: 标题级别 (1~5)
-            number_style: 编号样式名 ("1." / "一." / "①")
+    def _link_list_template_level(self, level, number_style):
+        """配置共享列表模板的指定级别，并将标题样式链接至该模板。
+
+        所有标题级别共用同一个 ListTemplate，使 ResetOnHigher 能在
+        上级标题出现时自动重置子级编号。
+        首次调用时创建模板并清空全部9级，后续调用仅配置目标级别。
         """
         try:
-            style_names = [f"标题 {level}", f"标题{level}"]
+            # 获取标题样式
             style = None
-            for sn in style_names:
+            for sn in (f"标题 {level}", f"标题{level}"):
                 try:
                     style = self.work_doc.Styles(sn)
                     break
                 except Exception:
                     continue
-
             if style is None:
                 return
 
-            list_template = self.work_doc.ListTemplates.Add(True)
-
-            # --- 先清空全部9级 ---
-            for lvl in range(1, 10):
-                try:
-                    level_obj = list_template.ListLevels(lvl)
-                    level_obj.NumberFormat = ""
-                    level_obj.NumberStyle = 255  # wdListNumberStyleNone
-                except:
-                    pass
+            # 首次调用时创建共享模板
+            if self._master_template is None:
+                self._master_template = self.work_doc.ListTemplates.Add(True)
+                for lvl in range(1, 10):
+                    try:
+                        lo = self._master_template.ListLevels(lvl)
+                        lo.NumberFormat = ""
+                        lo.NumberStyle = 255  # wdListNumberStyleNone
+                    except:
+                        pass
 
             # --- 确定 NumberFormat 与 NumberStyle ---
-            # 统一使用 \". \"（点号+空格）作为序号分隔符
+            # 统一使用 ". "（点号+空格）作为序号分隔符
             if number_style == "一.":
-                fmt = f"%{level}. "
+                fmt = f"%{level}."
                 ns = 37  # wdListNumberStyleSimpChinNum
             elif number_style == "1.":
-                fmt = f"%{level}. "
-                ns = 0  # wdListNumberStyleArabic
+                fmt = f"%{level}."
+                ns = 0   # wdListNumberStyleArabic
             elif number_style == "①":
                 fmt = f"%{level}"
                 ns = 18  # wdListNumberStyleNumberInCircle
             elif number_style == "资料1. ":
-                fmt = f"资料%{level}. "
+                fmt = f"资料%{level}."
                 ns = 0
             else:
                 return
 
-            # --- 同时设置目标级别和第1级作为安全兜底 ---
-            for lvl in (1, level):
-                target_level = list_template.ListLevels(lvl)
-                target_level.NumberFormat = fmt
-                target_level.NumberStyle = ns
-                try:
-                    list_gallery = wc.get_list_gallery(
-                        self.work_doc.Application, wc.wdOutlineNumberGallery)
-                    ref_template = list_gallery.ListTemplates(1)
-                    ref_level = ref_template.ListLevels(1)
-                    for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
-                                 'TabPosition', 'ResetOnHigher', 'StartAt'):
-                        try:
-                            setattr(target_level, attr, getattr(ref_level, attr))
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+            target_level = self._master_template.ListLevels(level)
+            target_level.NumberFormat = fmt
+            target_level.NumberStyle = ns
+            # 从图库模板获取通用布局参数
+            try:
+                list_gallery = wc.get_list_gallery(
+                    self.work_doc.Application, wc.wdOutlineNumberGallery)
+                ref_level = list_gallery.ListTemplates(1).ListLevels(1)
+                for attr in ('NumberPosition', 'Alignment', 'TrailingCharacter',
+                             'TabPosition', 'ResetOnHigher', 'StartAt'):
+                    try:
+                        setattr(target_level, attr, getattr(ref_level, attr))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # 强制覆写关键属性
+            try:
+                target_level.TrailingCharacter = wc.wdTrailingSpace
+            except Exception:
+                pass
+            try:
+                target_level.StartAt = 1
+            except Exception:
+                pass
+            try:
+                target_level.ResetOnHigher = True
+            except Exception:
+                pass
 
-            # 使用 LinkToListTemplate 显式覆盖样式已有的列表模板链接
+            # 链接样式到共享模板的对应级别
             try:
                 style.LinkToListTemplate(
-                    ListTemplate=list_template, ListLevelNumber=level)
+                    ListTemplate=self._master_template, ListLevelNumber=level)
             except Exception:
-                list_template.ListLevels(level).LinkedStyle = style
+                self._master_template.ListLevels(level).LinkedStyle = style
 
         except Exception as ex:
             import traceback

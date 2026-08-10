@@ -49,11 +49,21 @@ wdShapeCenter = -999994
 
 wdLineStyleSingle = 1
 wdLineWidth025pt = 2
+wdLineWidth075pt = 8
 wdColorBlack = 0
+
+wdBorderTop = -1
+wdBorderLeft = -2
+wdBorderBottom = -3
+wdBorderRight = -4
 
 wdListNumberStyleSimpChinNum = 37
 wdListNumberStyleNumberInCircle = 18
 wdListNumberStyleNone = 255
+
+wdTrailingTab = 0
+wdTrailingSpace = 1
+wdTrailingNone = 2
 
 
 def set_range_style(range_obj, style):
