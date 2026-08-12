@@ -37,6 +37,7 @@ wdListNumberStyleArabic = 0
 
 wdWrapSquare = 0
 wdWrapTopBottom = 3
+wdWrapInline = 7
 
 wdAutoFitWindow = 2
 

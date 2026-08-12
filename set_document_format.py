@@ -376,42 +376,71 @@ class SetDocumentFormat:
         except Exception as ex:
             print(f"移除编号时出错: {ex}")
     
-    def set_images_and_tables(self, wrap_as_inline=True):
+    def set_images_and_tables(self, wrap_as_inline=True, no_indent=True, max_width=True):
+        """设置图片与表格的格式。
+
+        Args:
+            wrap_as_inline: 是否将图片文字环绕类型设为嵌入型（默认True）
+            no_indent: 是否取消图片/表格所在段落的缩进（默认True）
+            max_width: 是否将图片/表格设为页面最大宽度（默认True）
+        """
         if self.work_doc is None:
             return
-        
+
+        # 计算页面正文区域宽度（用于max_width）
+        page_width = None
+        if max_width:
+            try:
+                ps = self.work_doc.PageSetup
+                page_width = ps.PageWidth - ps.LeftMargin - ps.RightMargin
+            except:
+                pass
+
+        if wrap_as_inline:
+            # 将所有浮动图形（Shapes）转换为嵌入型（InlineShapes）
+            # 从后往前遍历，因为ConvertToInlineShape会从Shapes集合中移除当前项
+            for i in range(self.work_doc.Shapes.Count, 0, -1):
+                try:
+                    shape = self.work_doc.Shapes(i)
+                    shape.ConvertToInlineShape()
+                except:
+                    pass
+
+            # 确保所有表格为嵌入型（无文字环绕）
+            for table in self.work_doc.Tables:
+                try:
+                    table.Rows.WrapAroundText = False
+                except:
+                    pass
+
+        # 处理嵌入型图片：最大宽度、不缩进
         for inline_shape in self.work_doc.InlineShapes:
             if inline_shape.Type == wc.wdInlineShapePicture:
                 try:
-                    section = inline_shape.Range.Sections(1)
-                    ps = section.PageSetup
-                    page_width = ps.PageWidth - ps.LeftMargin - ps.RightMargin
-                    inline_shape.Width = page_width
-                    inline_shape.Borders.Enable = 1
-                    
-                    try:
-                        shape = inline_shape.ConvertToShape()
-                        shape.RelativeHorizontalPosition = wc.wdRelativeHorizontalPositionPage
-                        shape.Left = ps.LeftMargin
-                        shape.WrapFormat.Type = wc.wdWrapSquare
-                    except:
-                        pass
-                except:
-                    page_width = self.work_doc.PageSetup.PageWidth - \
-                                self.work_doc.PageSetup.LeftMargin - \
-                                self.work_doc.PageSetup.RightMargin
-                    inline_shape.Width = page_width
-                    inline_shape.Borders.Enable = 1
-        
-        if wrap_as_inline:
-            for shape in self.work_doc.Shapes:
-                try:
-                    shape.WrapFormat.Type = wc.wdWrapTopBottom
+                    if max_width and page_width is not None:
+                        inline_shape.Width = page_width
+
+                    if no_indent:
+                        try:
+                            inline_shape.Range.ParagraphFormat.FirstLineIndent = 0
+                        except:
+                            pass
                 except:
                     pass
-        
+
+        # 处理表格：最大宽度、不缩进
         for table in self.work_doc.Tables:
-            table.AutoFitBehavior(wc.wdAutoFitWindow)
+            try:
+                if max_width:
+                    table.AutoFitBehavior(wc.wdAutoFitWindow)
+
+                if no_indent:
+                    try:
+                        table.Range.ParagraphFormat.FirstLineIndent = 0
+                    except:
+                        pass
+            except:
+                pass
     
     def center_all_images(self):
         """将所有图片居中显示（始终执行，不受界面控件影响）"""

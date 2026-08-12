@@ -100,7 +100,10 @@ class EventHandlers:
                 self.main_form.chk_main_title_bold.get())
         
         if self.main_form.chk_change_image_and_table_format.get():
-            set_doc_format.set_images_and_tables()
+            set_doc_format.set_images_and_tables(
+                wrap_as_inline=True,
+                no_indent=self.main_form.chk_image_no_indent.get(),
+                max_width=self.main_form.chk_max_width.get())
         
         if self.main_form.chk_change_content_format.get():
             indent_style = self.main_form.cmb_content_indent.get()

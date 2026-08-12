@@ -1031,6 +1031,14 @@ class MainForm:
                     font, font_size,
                     self.chk_main_title_bold.get())
             
+            # 图片与表格格式设置（先执行，将浮动图形转为嵌入型，
+            # 后续的边框、居中、表格最大宽度操作才能正确应用到转换后的对象上）
+            if self.chk_change_image_and_table_format.get():
+                set_doc_format.set_images_and_tables(
+                    wrap_as_inline=True,
+                    no_indent=self.chk_image_no_indent.get(),
+                    max_width=self.chk_max_width.get())
+
             # 始终为所有图片添加1px黑色外框，不受"变更图片与表格的格式"控件影响
             set_doc_format.add_image_border()
 
@@ -1039,9 +1047,6 @@ class MainForm:
 
             # 始终将所有表格调整为最大宽度，不受"变更图片与表格的格式"控件影响
             set_doc_format.set_all_tables_max_width()
-
-            if self.chk_change_image_and_table_format.get():
-                set_doc_format.set_images_and_tables()
             
             if self.chk_change_content_format.get():
                 indent_style = self.cmb_content_indent.get()
