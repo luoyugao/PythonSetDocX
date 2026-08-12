@@ -191,8 +191,10 @@ class SetDocumentFormat:
         except:
             style = self.work_doc.Styles.Add("MainTitle", wc.wdStyleTypeParagraph)
         
-        style.Font.Name = font
-        style.Font.Size = self._convert_chinese_font_size_to_points(font_size)
+        if font is not None:
+            style.Font.Name = font
+        if font_size is not None:
+            style.Font.Size = self._convert_chinese_font_size_to_points(font_size)
         style.Font.Bold = 1 if is_bold else 0
         style.ParagraphFormat.Alignment = wc.wdAlignParagraphCenter
         style.ParagraphFormat.SpaceAfter = 24

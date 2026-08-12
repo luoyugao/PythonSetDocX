@@ -275,12 +275,12 @@ class MainForm:
         # 字体、字号、加粗并列
         ttk.Label(group, text="字体:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_main_title_font = ttk.Combobox(
-            group, values=["宋体", "黑体", "楷体", "仿宋"], width=10)
+            group, values=["不变更", "宋体", "黑体", "楷体", "仿宋"], width=10)
         self.cmb_main_title_font.grid(row=1, column=1, padx=(0,3), pady=3, sticky=tk.W)
         
         ttk.Label(group, text="字号:", anchor=tk.E).grid(row=1, column=2, sticky=tk.E, padx=(2,0), pady=3)
         self.cmb_main_title_font_size = ttk.Combobox(
-            group, values=["二号", "三号", "四号"], width=10)
+            group, values=["不变更", "二号", "三号", "四号"], width=10)
         self.cmb_main_title_font_size.grid(row=1, column=3, padx=(0,3), pady=3, sticky=tk.W)
         
         self.chk_main_title_bold = tk.BooleanVar(value=True)
@@ -932,9 +932,14 @@ class MainForm:
             self.work_doc.Paragraphs(1).Range.InsertBefore(filename + '\r')
             
             set_doc_format = set_document_format.SetDocumentFormat(doc=self.work_doc)
+            font = self.cmb_main_title_font.get()
+            font_size = self.cmb_main_title_font_size.get()
+            if font == "不变更":
+                font = None
+            if font_size == "不变更":
+                font_size = None
             set_doc_format.set_main_title_format(
-                self.cmb_main_title_font.get(),
-                self.cmb_main_title_font_size.get(),
+                font, font_size,
                 self.chk_main_title_bold.get())
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
@@ -1010,9 +1015,14 @@ class MainForm:
                 PageNumberManager.add_page_numbers_custom(self.work_doc)
             
             if self.chk_change_main_title_format.get():
+                font = self.cmb_main_title_font.get()
+                font_size = self.cmb_main_title_font_size.get()
+                if font == "不变更":
+                    font = None
+                if font_size == "不变更":
+                    font_size = None
                 set_doc_format.set_main_title_format(
-                    self.cmb_main_title_font.get(),
-                    self.cmb_main_title_font_size.get(),
+                    font, font_size,
                     self.chk_main_title_bold.get())
             
             # 始终为所有图片添加1px黑色外框，不受"变更图片与表格的格式"控件影响
