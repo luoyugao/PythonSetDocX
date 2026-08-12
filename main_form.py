@@ -193,8 +193,9 @@ class MainForm:
         group.pack(fill=tk.X, padx=3, pady=(14, 3))
         
         self.chk_change_page_margin = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(group, text="调整页面边距", variable=self.chk_change_page_margin, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_page_margin))
         
         # 第一行：上边距、下边距 + 全部1CM按钮
         ttk.Label(group, text="上边距:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
@@ -224,8 +225,9 @@ class MainForm:
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_content_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更正文格式", variable=self.chk_change_content_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(group, text="变更正文格式", variable=self.chk_change_content_format, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, columnspan=6, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_content_format))
         
         # 第一行：缩进方式、对齐方式
         ttk.Label(group, text="缩进方式:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
@@ -269,8 +271,9 @@ class MainForm:
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_main_title_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更文章首行总标题", variable=self.chk_change_main_title_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(group, text="变更文章首行总标题", variable=self.chk_change_main_title_format, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_main_title_format))
         
         # 字体、字号、加粗并列
         ttk.Label(group, text="字体:", anchor=tk.E).grid(row=1, column=0, sticky=tk.E, padx=(2,0), pady=3)
@@ -297,8 +300,9 @@ class MainForm:
         inner_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(3, 2))
         
         self.chk_change_level_title_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(inner_frame, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(inner_frame, text="变更各章节标题格式", variable=self.chk_change_level_title_format, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_level_title_format))
         
         # 转自动序号、标题升级、标题降级按钮行
         btn_frame = ttk.Frame(inner_frame)
@@ -365,8 +369,9 @@ class MainForm:
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_page_orientation = tk.BooleanVar(value=False)
-        ttk.Checkbutton(group, text="变更纸张方向", variable=self.chk_change_page_orientation, style="Bold.TCheckbutton").grid(
-            row=0, column=0, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(group, text="变更纸张方向", variable=self.chk_change_page_orientation, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_page_orientation))
         
         self.radio_page_portrait = tk.BooleanVar(value=True)
         ttk.Radiobutton(group, text="纵向", variable=self.radio_page_portrait, value=True).grid(
@@ -384,8 +389,9 @@ class MainForm:
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         self.chk_change_image_and_table_format = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton").grid(
-            row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton")
+        cb.grid(row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_image_and_table_format))
         
         # 复选框行：不缩进、最大宽度
         self.chk_image_no_indent = tk.BooleanVar(value=True)
@@ -1307,6 +1313,19 @@ class MainForm:
         except Exception as ex:
             self.status_bar.config(text=f"删除失败: {ex}")
     
+    def _on_section_checkbox_right_click(self, clicked_var):
+        """右击章节勾选控件时：将当前控件设为True，其他所有章节勾选控件设为False"""
+        all_vars = [
+            self.chk_change_page_margin,
+            self.chk_change_content_format,
+            self.chk_change_main_title_format,
+            self.chk_change_level_title_format,
+            self.chk_change_page_orientation,
+            self.chk_change_image_and_table_format,
+        ]
+        for var in all_vars:
+            var.set(var is clicked_var)
+
     def _on_cancel_settings(self):
         """取消所有设置"""
         self.chk_change_page_margin.set(False)
