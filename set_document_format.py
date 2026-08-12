@@ -197,7 +197,8 @@ class SetDocumentFormat:
             style.Font.Size = self._convert_chinese_font_size_to_points(font_size)
         style.Font.Bold = 1 if is_bold else 0
         style.ParagraphFormat.Alignment = wc.wdAlignParagraphCenter
-        style.ParagraphFormat.SpaceAfter = 24
+        style.ParagraphFormat.SpaceBefore = self.work_doc.Application.LinesToPoints(0.5)
+        style.ParagraphFormat.SpaceAfter = self.work_doc.Application.LinesToPoints(0.5)
         
         set_range_style(self.work_doc.Paragraphs(1).Range, style)
         
@@ -240,6 +241,8 @@ class SetDocumentFormat:
                             list_template.ListLevels(level).LinkedStyle = style
 
             style.Font.Bold = 1
+            style.ParagraphFormat.SpaceBefore = self.work_doc.Application.LinesToPoints(0.5)
+            style.ParagraphFormat.SpaceAfter = self.work_doc.Application.LinesToPoints(0.5)
             return style
         else:
             para = level_or_para
