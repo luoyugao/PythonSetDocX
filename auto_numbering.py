@@ -3,7 +3,7 @@ auto_numbering.py
 标题手动序号转Word自动序号模块
 
 功能：
-  遍历文档中大纲级别为1~5的标题段落，检测人工输入的手动序号文本
+  遍历文档中大纲级别为1~9的标题段落，检测人工输入的手动序号文本
   （如"1."、"一、"、"（一）"、"①"、"A."、"α."、"Ⅰ."、"甲、"等），
   将其从段落文本中移除，并链接Word自动多级编号列表模板，实现
   标题自动编号。
@@ -569,7 +569,7 @@ class AutoNumbering:
         self._level_styles_set = {}
 
     def convert_all(self):
-        """遍历文档所有标题段落（大纲级别1~5），将手动序号转为自动编号。
+        """遍历文档所有标题段落（大纲级别1~9），将手动序号转为自动编号。
 
         对每个标题段落：
           1. 调用 detect_number_prefix() 检测手动序号
@@ -589,27 +589,10 @@ class AutoNumbering:
             try:
                 para = self.work_doc.Paragraphs(i)
 
-                # 只处理大纲级别1~5的标题段落，同时兼容通过样式名识别的标题
+                # 只处理大纲级别1~9的段落，无论其样式名是否为"标题X"
                 level = para.OutlineLevel
-                if level < 1 or level > 5:
-                    # 回退：通过样式名判断（部分文档标题可能未正确设置大纲级别）
-                    try:
-                        from word_constants import get_range_style
-                        style_obj = get_range_style(para)
-                        style_name = style_obj.NameLocal
-                        if '标题' not in style_name:
-                            continue
-                        # 提取标题级别数字，如 "标题 1" → 1
-                        import re
-                        m = re.search(r'(\d+)', style_name)
-                        if m:
-                            level = int(m.group(1))
-                            if level < 1 or level > 5:
-                                continue
-                        else:
-                            continue
-                    except Exception:
-                        continue
+                if level < 1 or level > 9:
+                    continue
 
                 text = para.Range.Text
                 if not text or not text.strip():
@@ -650,6 +633,7 @@ class AutoNumbering:
                 rng.Delete()
 
                 # ---- 链接自动编号列表模板 ----
+                # 确保每个级别只链接一次，避免重复创建列表模板
                 if level not in self._level_styles_set:
                     self._link_list_template(level, style_name)
                     self._level_styles_set[level] = style_name
@@ -669,7 +653,7 @@ class AutoNumbering:
         使用 LinkToListTemplate 显式覆盖样式已有的列表模板链接。
 
         Args:
-            level: 标题级别 (1~5)
+            level: 标题级别 (1~9)
             number_style: 编号样式名 ("1." / "一." / "①")
         """
         try:
@@ -765,7 +749,7 @@ class AutoNumbering:
 
         Args:
             para: 段落 COM 对象
-            level: 标题级别 (1~5)
+            level: 标题级别 (1~9)
             start_value: 目标起始编号值
         """
         try:
@@ -795,7 +779,6 @@ class AutoNumbering:
         except Exception:
             pass
 
-
 # ============================================================
 # 便捷函数：供外部直接调用
 # ============================================================
@@ -809,5 +792,7 @@ def force_heading_auto_numbering(work_doc):
     Returns:
         int: 成功转换的段落数量
     """
+    # 创建一个AutoNumbering类的实例，传入Word文档COM对象
     converter = AutoNumbering(work_doc)
+    # 调用converter实例的convert_all方法，转换所有标题并返回成功转换的段落数量
     return converter.convert_all()

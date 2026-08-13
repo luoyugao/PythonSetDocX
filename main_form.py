@@ -1428,18 +1428,162 @@ class MainForm:
             messagebox.showerror("错误", f"操作失败: {ex}")
 
     def _on_convert_to_auto_numbering(self):
-        """将标题中的手动序号转换为Word自动序号"""
+        """将标题中的手动序号转换为Word自动序号。
+
+        流程：
+          1. 将各级标题"不变更"的字体/字号解析为当前目标段落的实际值；
+          2. 按"变更各章节标题格式"组的各项设置执行格式设置逻辑；
+          3. 执行手动序号转自动序号。
+        """
         if self.work_doc is None:
             messagebox.showwarning("警告", "请先选择一个文档")
             return
 
+        restored_fonts = []
+        restored_sizes = []
         try:
+            from set_document_format import SetDocumentFormat
+
+            # 1. 解析"不变更"的字体/字号为当前目标段落的实际值，
+            #    返回被临时改写、结束后需恢复为"不变更"的下拉框索引
+            restored_fonts, restored_sizes = self._resolve_level_title_font_and_size()
+
+            # 2. 按"变更各章节标题格式"组的各项设置执行格式设置逻辑
+            set_doc_format = SetDocumentFormat(doc=self.work_doc)
+            self._set_level_title_styles(set_doc_format)
+
+            # 3. 执行转自动序号
             converted = AutoNumbering(self.work_doc).convert_all()
             self.status_bar.config(text=f"已转换 {converted} 个标题为自动序号")
             if converted == 0:
                 messagebox.showinfo("提示", "未找到需要转换的手动序号标题")
         except Exception as ex:
             messagebox.showerror("错误", f"转换失败: {ex}")
+        finally:
+            # 恢复被临时改写的"不变更"下拉框，避免污染界面设置
+            for idx in restored_fonts:
+                try:
+                    self.level_title_font_vars[idx].set("不变更")
+                except Exception:
+                    pass
+            for idx in restored_sizes:
+                try:
+                    self.level_title_font_size_vars[idx].set("不变更")
+                except Exception:
+                    pass
+
+    def _resolve_level_title_font_and_size(self):
+        """将各级标题"不变更"的字体/字号解析为当前目标段落的实际值。
+
+        扫描文档中1~5级标题段落，取每级首个段落的当前字体名与字号（磅值），
+        对"不变更"项临时写回对应下拉框，使后续格式设置能够显式保留当前格式，
+        避免应用样式 / 转换自动序号时字体字号被样式默认值覆盖。
+
+        Returns:
+            tuple: (需要恢复为"不变更"的字体下拉框索引列表,
+                    需要恢复为"不变更"的字号下拉框索引列表)
+        """
+        current_fonts = [None] * 5
+        current_sizes = [None] * 5
+
+        try:
+            para_count = self.work_doc.Paragraphs.Count
+            for i in range(1, para_count + 1):
+                try:
+                    para = self.work_doc.Paragraphs(i)
+                    level = para.OutlineLevel
+                    if level < 1 or level > 5:
+                        continue
+                    idx = level - 1
+
+                    if current_fonts[idx] is None:
+                        current_fonts[idx] = self._get_paragraph_font_name(para)
+                    if current_sizes[idx] is None:
+                        current_sizes[idx] = self._get_paragraph_font_size(para)
+
+                    # 各级字体字号都已取到即可提前结束
+                    if all(f is not None for f in current_fonts) and \
+                            all(s is not None for s in current_sizes):
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        restored_fonts = []
+        restored_sizes = []
+
+        for idx in range(5):
+            if self.level_title_font_vars[idx].get() == "不变更" and current_fonts[idx]:
+                self.level_title_font_vars[idx].set(current_fonts[idx])
+                restored_fonts.append(idx)
+
+            if self.level_title_font_size_vars[idx].get() == "不变更" and current_sizes[idx]:
+                size_name = self._convert_points_to_chinese_font_size(current_sizes[idx])
+                if size_name:
+                    self.level_title_font_size_vars[idx].set(size_name)
+                    restored_sizes.append(idx)
+
+        return restored_fonts, restored_sizes
+
+    @staticmethod
+    def _get_paragraph_font_name(para):
+        """读取段落当前的字体名，优先取东亚字体，失败回退到通用字体名。"""
+        rng = para.Range
+        try:
+            name = rng.Font.NameFarEast
+            if name:
+                return name
+        except Exception:
+            pass
+        try:
+            return rng.Font.Name
+        except Exception:
+            return None
+
+    @staticmethod
+    def _get_paragraph_font_size(para):
+        """读取段落当前的字号（磅值），无有效值时返回None。"""
+        try:
+            size = para.Range.Font.Size
+            # wdUndefined 的值为 9999999，表示字号继承或混排，视为无效
+            if size is not None and 0 < size < 1000:
+                return float(size)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _convert_points_to_chinese_font_size(points):
+        """将字号磅值转换为中文字号名（如 16.0 → 三号）。
+
+        先精确匹配，再在 0.5 磅误差内取最近的中文字号；
+        无法匹配时返回 None，保持"不变更"。
+        """
+        size_mapping = {
+            42.0: "初号", 36.0: "小初", 26.0: "一号", 24.0: "小一",
+            22.0: "二号", 18.0: "小二", 16.0: "三号", 15.0: "小三",
+            14.0: "四号", 12.0: "小四", 10.5: "五号", 9.0: "小五",
+            7.5: "六号", 6.5: "小六", 5.5: "七号", 5.0: "八号",
+        }
+        if points is None:
+            return None
+
+        points = float(points)
+        if points in size_mapping:
+            return size_mapping[points]
+
+        best_name = None
+        best_diff = None
+        for val, name in size_mapping.items():
+            diff = abs(val - points)
+            if best_diff is None or diff < best_diff:
+                best_diff = diff
+                best_name = name
+
+        if best_diff is not None and best_diff <= 0.5:
+            return best_name
+        return None
 
     def _on_delete_all_pictures(self):
         """删除文档中所有图片"""
