@@ -211,6 +211,7 @@ class SetDocumentFormat:
 
         if isinstance(level_or_para, int):
             level = level_or_para
+            self.set_toc_line_spacing()
             style = None
             try:
                 style = self.work_doc.Styles(f"标题 {level}")
@@ -278,6 +279,31 @@ class SetDocumentFormat:
                 set_range_style(para.Range, style)
             except Exception as ex:
                 print(f"设置标题样式时出错: {ex}")
+
+    def set_toc_line_spacing(self):
+        """设置1~9级目录样式的段前、段后行距为0.5行。"""
+        if self.work_doc is None:
+            return
+
+        half_line = self.work_doc.Application.LinesToPoints(0.5)
+        for level in range(1, 10):
+            style = self._get_toc_style(level)
+            if style is None:
+                continue
+            try:
+                style.ParagraphFormat.SpaceBefore = half_line
+                style.ParagraphFormat.SpaceAfter = half_line
+            except:
+                pass
+
+    def _get_toc_style(self, level):
+        """按中文/英文内置名称获取目录样式，找不到返回None。"""
+        for name in (f"目录 {level}", f"toc {level}", f"TOC {level}"):
+            try:
+                return self.work_doc.Styles(name)
+            except:
+                continue
+        return None
 
     def _create_single_level_template(self, number_style, target_level):
         """创建一个全新的列表模板，仅配置指定级别的编号格式。
