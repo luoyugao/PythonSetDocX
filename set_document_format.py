@@ -329,6 +329,9 @@ class SetDocumentFormat:
         if number_style == "一.":
             fmt = f"%{target_level}. "
             ns = wc.wdListNumberStyleSimpChinNum
+        elif number_style == "一）":
+            fmt = f"%{target_level}）"
+            ns = wc.wdListNumberStyleSimpChinNum
         elif number_style == "1.":
             fmt = f"%{target_level}. "
             ns = wc.wdListNumberStyleArabic
