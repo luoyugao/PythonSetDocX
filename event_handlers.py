@@ -2,7 +2,11 @@ import os
 import re
 import win32com.client
 import word_constants as wc
-from word_constants import set_range_style, get_range_style
+from word_constants import (set_range_style, get_range_style,
+                            get_effective_font_size, get_effective_font_names,
+                            apply_font_size, apply_font_names,
+                            get_effective_indents, apply_indents,
+                            apply_indent_style)
 from page_number_manager import PageNumberManager
 
 
@@ -94,9 +98,18 @@ class EventHandlers:
             self._add_page_number()
         
         if self.main_form.chk_change_main_title_format.get():
+            # "不变更"必须转成 None：set_main_title_format 以 None 表示该项
+            # 不修改，并把段落原有字体字号写回样式。若直接把字符串
+            # "不变更"传下去，会被当成字体名/字号名写进 Word。
+            main_title_font = self.main_form.cmb_main_title_font.get()
+            main_title_size = self.main_form.cmb_main_title_font_size.get()
+            if main_title_font == "不变更":
+                main_title_font = None
+            if main_title_size == "不变更":
+                main_title_size = None
             set_doc_format.set_main_title_format(
-                self.main_form.cmb_main_title_font.get(),
-                self.main_form.cmb_main_title_font_size.get(),
+                main_title_font,
+                main_title_size,
                 self.main_form.chk_main_title_bold.get())
         
         if self.main_form.chk_change_image_and_table_format.get():
@@ -104,6 +117,11 @@ class EventHandlers:
                 wrap_as_inline=True,
                 no_indent=self.main_form.chk_image_no_indent.get(),
                 max_width=self.main_form.chk_max_width.get())
+
+            # 表格统一格式：按内容自动调整后撑满页面宽度，
+            # 所有行垂直居中、首行水平居中。
+            # 放在勾选判断内：未勾选时不应改动图片与表格。
+            set_doc_format.set_tables_auto_adjust_and_align()
         
         if self.main_form.chk_change_content_format.get():
             indent_style = self.main_form.cmb_content_indent.get()
@@ -113,16 +131,33 @@ class EventHandlers:
             
             if font == "不变更":
                 font = None
+            if font_size == "不变更":
+                font_size = None
             if indent_style == "不变更":
                 indent_style = None
             if alignment == "不变更":
                 alignment = None
             
+            # 表格内段落与正文共用「正文」样式，而 set_content_style 改的是
+            # 样式本身——不保护的话表格文字会被一并改成与正文相同的格式。
+            # 改样式前快照，改完以直接格式写回。
+            table_format_snapshot = \
+                set_doc_format.snapshot_table_paragraph_format()
+
             set_doc_format.set_content_format(
                 indent_style, alignment, font, font_size,
                 None,
                 self.main_form.chk_delete_empty_lines.get(),
                 self.main_form.chk_standard_line_spacing.get())
+
+            # 同步设置文档的「正文」样式本身（新版式 / 无直接格式的段落
+            # 也随之一致）。传入的 None 表示该项在界面上是"不变更"。
+            try:
+                set_doc_format.set_content_style(
+                    indent_style, alignment, font, font_size)
+            finally:
+                set_doc_format.restore_table_paragraph_format(
+                    table_format_snapshot)
         
         if self.main_form.chk_change_level_title_format.get():
             self._set_level_title_styles(set_doc_format)
@@ -353,6 +388,26 @@ class EventHandlers:
     
     def _set_level_title_styles(self, set_doc_format):
         self.level_style = [None, None, None, None, None]
+        # 字体/字号/缩进方式选择"不变更"的级别：这些级别必须保留段落处理前的
+        # 字体、字号与缩进。集合在这里（任何样式被创建/改动之前）直接从下拉框
+        # 读取，供文末的"处理前快照"使用——晚于 set_title_styles 读取就只能
+        # 读到已被改动的值。
+        keep_font_levels = set()
+        keep_size_levels = set()
+        keep_indent_levels = set()
+        title_indent_styles = {}        # 级别索引 -> 界面上的"缩进方式"文本
+        for i in range(5):
+            try:
+                if self.main_form.level_title_font_vars[i].get() in ("", "不变更"):
+                    keep_font_levels.add(i)
+                if self.main_form.level_title_font_size_vars[i].get() in ("", "不变更"):
+                    keep_size_levels.add(i)
+                indent_value = self.main_form.level_title_indent_vars[i].get()
+                title_indent_styles[i] = indent_value
+                if indent_value in ("", "不变更"):
+                    keep_indent_levels.add(i)
+            except Exception:
+                pass
         
         try:
             doc = set_doc_format.work_doc
@@ -363,6 +418,31 @@ class EventHandlers:
                 return
             
             para_count = doc.Paragraphs.Count
+            
+            # ---- 处理前快照：记录"不变更"级别段落的字体、字号与缩进 ----
+            # 必须早于任何 set_title_styles 调用：它会创建/改动"标题 N"样式
+            # 并链接列表模板，可能连带改变段落的有效字体、字号与缩进，
+            # 那时再读就只能读到已被改动的值，"保留原格式"也就失效了。
+            preserved_fonts = {}        # para_index -> (字号, {槽位: 字体名}, {缩进属性: 值})
+            for para_index in range(1, para_count + 1):
+                try:
+                    paragraph = doc.Paragraphs(para_index)
+                    level_index = set_doc_format.get_paragraph_outline_level(paragraph)
+                    if level_index < 1 or level_index > 5:
+                        continue
+                    idx = level_index - 1
+                    need_size = idx in keep_size_levels
+                    need_font = idx in keep_font_levels
+                    need_indent = idx in keep_indent_levels
+                    if not need_size and not need_font and not need_indent:
+                        continue
+                    size = get_effective_font_size(paragraph.Range) if need_size else None
+                    names = get_effective_font_names(paragraph.Range) if need_font else None
+                    indents = get_effective_indents(paragraph.Range) if need_indent else None
+                    if size is not None or names or indents:
+                        preserved_fonts[para_index] = (size, names, indents)
+                except Exception:
+                    continue
             
             for para_index in range(1, para_count + 1):
                 try:
@@ -400,6 +480,25 @@ class EventHandlers:
                     
                     if self.level_style[level_index - 1] is not None:
                         set_range_style(paragraph.Range, self.level_style[level_index - 1])
+
+                        # 写回处理前的字体/字号/缩进（本段落处理的最后一步）。
+                        # 对"不变更"的级别，用处理前快照的值以直接格式覆盖回来：
+                        # 套用"标题 N"样式与链接列表模板都会把列表模板级别的
+                        # 字体与缩进位置（NumberPosition / TextPosition）带到
+                        # 段落上，先写就会被冲掉。
+                        saved_size, saved_font_names, saved_indents = \
+                            preserved_fonts.get(para_index, (None, None, None))
+                        apply_font_size(paragraph.Range, saved_size)
+                        apply_font_names(paragraph.Range, saved_font_names)
+                        if (level_index - 1) in keep_indent_levels:
+                            # "不变更"：还原段落处理前的缩进
+                            apply_indents(paragraph.Range, saved_indents)
+                        else:
+                            # 明确选了缩进方式：在列表模板之后强制生效，
+                            # 否则会被列表级别的 NumberPosition 顶掉
+                            apply_indent_style(
+                                paragraph.Range.ParagraphFormat,
+                                title_indent_styles.get(level_index - 1))
                 except:
                     continue
         except:

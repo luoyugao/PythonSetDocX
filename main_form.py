@@ -2,14 +2,32 @@ import os
 import sys
 import subprocess
 import threading
+import ctypes
 import tkinter as tk
 import tkinter.font
 from tkinter import ttk, filedialog, messagebox
 import doc_parameters_manager as dpm
 from universal import Universal
-from word_constants import set_range_style, get_range_style
+from word_constants import (set_range_style, get_range_style,
+                            get_effective_font_size, get_effective_font_names,
+                            apply_font_size, apply_font_names,
+                            get_effective_indents, apply_indents,
+                            apply_indent_style)
 import set_document_format
 from auto_numbering import AutoNumbering
+
+
+def resource_path(filename):
+    """获取随程序分发的资源文件路径
+
+    打包成单文件 exe 后，资源会被释放到临时目录（sys._MEIPASS），
+    开发运行时则与源码同目录。
+    """
+    if getattr(sys, 'frozen', False):
+        base_dir = sys._MEIPASS
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, filename)
 
 
 class ToolTip:
@@ -60,6 +78,123 @@ class ToolTip:
             tw.destroy()
 
 
+class _RECT(ctypes.Structure):
+    """Win32 RECT 结构"""
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+class _POINT(ctypes.Structure):
+    """Win32 POINT 结构"""
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class _MONITORINFO(ctypes.Structure):
+    """Win32 MONITORINFO 结构，rcWork 为排除任务栏后的可工作区域"""
+    _fields_ = [("cbSize", ctypes.c_ulong),
+                ("rcMonitor", _RECT),
+                ("rcWork", _RECT),
+                ("dwFlags", ctypes.c_ulong)]
+
+
+# 窗口标题栏高度（像素），用于判断标题栏是否落在屏幕内
+_TITLE_BAR_HEIGHT = 30
+# 判定窗口可见所需的最小可见宽度/标题栏可见高度（像素）
+_MIN_VISIBLE_WIDTH = 120
+_MIN_VISIBLE_TITLE_HEIGHT = 20
+
+
+def get_monitor_work_areas():
+    """枚举所有显示器的可工作区域，返回 [(left, top, right, bottom), ...]"""
+    areas = []
+    if sys.platform != 'win32':
+        return areas
+    try:
+        user32 = ctypes.windll.user32
+        proc_type = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p,
+                                       ctypes.c_void_p,
+                                       ctypes.POINTER(_RECT),
+                                       ctypes.c_void_p)
+        user32.EnumDisplayMonitors.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                               proc_type, ctypes.c_void_p]
+        user32.EnumDisplayMonitors.restype = ctypes.c_int
+        user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p,
+                                           ctypes.POINTER(_MONITORINFO)]
+        user32.GetMonitorInfoW.restype = ctypes.c_int
+
+        def _collect(hmonitor, hdc, lprect, lparam):
+            info = _MONITORINFO()
+            info.cbSize = ctypes.sizeof(_MONITORINFO)
+            if user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+                r = info.rcWork
+                areas.append((r.left, r.top, r.right, r.bottom))
+            return 1
+
+        user32.EnumDisplayMonitors(None, None, proc_type(_collect), None)
+    except Exception:
+        # 枚举失败时返回空列表，调用方退回到原来的行为
+        areas = []
+    return areas
+
+
+def get_current_monitor_work_area():
+    """获取鼠标所在显示器（即当前可视屏幕）的工作区域，失败时回退到第一个显示器"""
+    areas = get_monitor_work_areas()
+    if not areas:
+        return None
+    if sys.platform == 'win32':
+        try:
+            user32 = ctypes.windll.user32
+            user32.GetCursorPos.argtypes = [ctypes.POINTER(_POINT)]
+            user32.GetCursorPos.restype = ctypes.c_int
+            user32.MonitorFromPoint.argtypes = [_POINT, ctypes.c_ulong]
+            user32.MonitorFromPoint.restype = ctypes.c_void_p
+            user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p,
+                                               ctypes.POINTER(_MONITORINFO)]
+            user32.GetMonitorInfoW.restype = ctypes.c_int
+            pt = _POINT()
+            if user32.GetCursorPos(ctypes.byref(pt)):
+                # MONITOR_DEFAULTTONEAREST = 2
+                hmonitor = user32.MonitorFromPoint(pt, 2)
+                info = _MONITORINFO()
+                info.cbSize = ctypes.sizeof(_MONITORINFO)
+                if user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+                    r = info.rcWork
+                    return (r.left, r.top, r.right, r.bottom)
+        except Exception:
+            pass
+    return areas[0]
+
+
+def is_rect_visible_on_screen(left, top, width, height, areas):
+    """判断窗口矩形在任一显示器工作区内是否留有可操作的可见部分
+
+    可见部分以窗口顶部（标题栏）为准，避免出现标题栏在屏幕外、
+    只剩窗口下边缘露在屏幕内从而无法拖动的情况。
+    """
+    if not areas:
+        return False
+    right = left + width
+    title_bottom = top + _TITLE_BAR_HEIGHT
+    for a_left, a_top, a_right, a_bottom in areas:
+        overlap_w = min(right, a_right) - max(left, a_left)
+        overlap_h = min(title_bottom, a_bottom) - max(top, a_top)
+        if overlap_w >= _MIN_VISIBLE_WIDTH and overlap_h >= _MIN_VISIBLE_TITLE_HEIGHT:
+            return True
+    return False
+
+
+def center_on_current_screen(width, height):
+    """将窗口居中于当前可视屏幕，返回 (left, top)；无法获取屏幕时返回 None"""
+    area = get_current_monitor_work_area()
+    if area is None:
+        return None
+    a_left, a_top, a_right, a_bottom = area
+    left = a_left + max(0, (a_right - a_left - width) // 2)
+    top = a_top + max(0, (a_bottom - a_top - height) // 2)
+    return left, top
+
+
 class MainForm:
     """主窗体类，负责整个应用的界面创建和事件处理"""
     
@@ -68,6 +203,12 @@ class MainForm:
         self.root = root
         # 设置窗口标题为"文档格式设置PY1.0"
         self.root.title("文档格式设置PY程序1.0")
+        # 设置窗口与任务栏图标（开发运行时与源码同目录，打包后由 exe 释放到临时目录）
+        try:
+            self.root.iconbitmap(resource_path("app.ico"))
+        except Exception:
+            # 图标缺失不影响程序运行
+            pass
         # 设置窗口初始大小为738x836
         self.root.geometry("738x836")
         # 允许窗口调整大小（宽度和高度均可调整）
@@ -330,6 +471,12 @@ class MainForm:
         fonts = ["不变更", "宋体", "黑体", "楷体", "仿宋"]
         font_sizes = ["不变更", "三号", "小三", "四号", "小四", "五号", "小五"]
         number_styles = ["不变更", "资料1. ", "一.", "一）", "1.", "①", "无序号"]
+        # "第1章""步骤1. "两类特殊序号只对1、2级标题有意义：
+        # "第1章"按级别渲染为"第1章…"、"第2章…"，
+        # "步骤1. "按级别渲染为"步骤1. "、"步骤2. "。
+        # 因此仅在1、2级的序号样式下拉框中提供（两者紧随"资料1. "之后排列），
+        # 3~5级保持原选项列表。
+        chapter_number_styles = ["不变更", "资料1. ", "第1章", "步骤1. ", "一.", "一）", "1.", "①", "无序号"]
         indents = ["不变更", "无缩进", "首行缩进2字符"]
         
         for i in range(5):
@@ -343,7 +490,8 @@ class MainForm:
             font_size_var.grid(row=i+3, column=2, padx=1, pady=1)
             self.level_title_font_size_vars.append(font_size_var)
             
-            number_var = ttk.Combobox(inner_frame, values=number_styles, width=8)
+            level_number_styles = chapter_number_styles if i < 2 else number_styles
+            number_var = ttk.Combobox(inner_frame, values=level_number_styles, width=8)
             number_var.grid(row=i+3, column=3, padx=1, pady=1)
             self.level_title_number_vars.append(number_var)
             
@@ -390,9 +538,14 @@ class MainForm:
         
         self.chk_change_image_and_table_format = tk.BooleanVar(value=True)
         cb = ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton")
-        cb.grid(row=0, column=0, columnspan=5, sticky=tk.W, padx=2, pady=3)
+        cb.grid(row=0, column=0, columnspan=4, sticky=tk.W, padx=2, pady=3)
         cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_image_and_table_format))
-        
+
+        # “只处理表格”勾选项（与上一控件同行，靠最右排列）
+        self.chk_table_only = tk.BooleanVar(value=False)
+        ttk.Checkbutton(group, text="只处理表格", variable=self.chk_table_only).grid(
+            row=0, column=4, sticky=tk.E, padx=2, pady=3)
+
         # 复选框行：不缩进、最大宽度
         self.chk_image_no_indent = tk.BooleanVar(value=True)
         ttk.Checkbutton(group, text="不缩进", variable=self.chk_image_no_indent).grid(
@@ -493,13 +646,8 @@ class MainForm:
             font=('TkDefaultFont', 9, 'bold'))
 
         # 加载文件夹图标，用于目录树每个节点前显示
-        if getattr(sys, 'frozen', False):
-            script_dir = sys._MEIPASS
-        else:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-        icon_path = os.path.join(script_dir, "folder.png")
         try:
-            self.folder_icon = tk.PhotoImage(file=icon_path)
+            self.folder_icon = tk.PhotoImage(file=resource_path("folder.png"))
         except Exception:
             self.folder_icon = None
 
@@ -951,11 +1099,25 @@ class MainForm:
             messagebox.showerror("错误", f"操作失败: {ex}")
     
     def _apply_saved_window_bounds(self):
-        """应用上次保存的窗口位置（不恢复尺寸）"""
-        # 仅恢复位置，不恢复尺寸（尺寸固定为738x836）
+        """应用上次保存的窗口位置（不恢复尺寸）
+
+        应用后核查窗口是否仍在可视屏幕内；若不在（例如上次所在的显示器
+        已被拔除），则将窗口移动到当前可视屏幕的正中。
+        """
+        # 尺寸固定为738x836，仅恢复位置；无历史位置时由窗口管理器决定初始位置
         if dpm.WindowWidth > 0 and dpm.WindowHeight > 0:
-            self.root.geometry(f"738x836+{dpm.WindowLeft}+{dpm.WindowTop}")
-    
+            win_w, win_h = 738, 836
+            left, top = dpm.WindowLeft, dpm.WindowTop
+
+            # 核查窗口是否在可视屏幕内，不在则移到当前可视屏幕正中
+            areas = get_monitor_work_areas()
+            if areas and not is_rect_visible_on_screen(left, top, win_w, win_h, areas):
+                center = center_on_current_screen(win_w, win_h)
+                if center is not None:
+                    left, top = center
+
+            self.root.geometry(f"{win_w}x{win_h}+{left}+{top}")
+
     def _initialize_event_handlers(self):
         """初始化事件处理器（预留方法，当前为空实现）"""
         pass
@@ -1033,20 +1195,29 @@ class MainForm:
             
             # 图片与表格格式设置（先执行，将浮动图形转为嵌入型，
             # 后续的边框、居中、表格最大宽度操作才能正确应用到转换后的对象上）
+            # 未勾选"变更图片与表格的格式"时，下面的图片边框、图片居中和
+            # 表格统一格式全部不执行——否则图片的边框、对齐与位置会被改动。
+            table_only = False
             if self.chk_change_image_and_table_format.get():
+                table_only = self.chk_table_only.get()
                 set_doc_format.set_images_and_tables(
                     wrap_as_inline=True,
                     no_indent=self.chk_image_no_indent.get(),
-                    max_width=self.chk_max_width.get())
+                    max_width=self.chk_max_width.get(),
+                    table_only=table_only)
 
-            # 始终为所有图片添加1px黑色外框，不受"变更图片与表格的格式"控件影响
-            set_doc_format.add_image_border()
+                # 勾选"只处理表格"时，以下图片相关操作一并跳过
+                if not table_only:
+                    # 为所有图片添加1px黑色外框
+                    set_doc_format.add_image_border()
 
-            # 始终居中所有图片，不受"变更图片与表格的格式"控件影响
-            set_doc_format.center_all_images()
+                    # 居中所有图片（会把嵌入型图片所在段落设为居中，
+                    # 并把浮动图片定位到页面水平居中，是明显改变图片位置的操作）
+                    set_doc_format.center_all_images()
 
-            # 始终将所有表格调整为最大宽度，不受"变更图片与表格的格式"控件影响
-            set_doc_format.set_all_tables_max_width()
+                # 表格统一格式：先按内容自动调整表格（根据内容调整表格）
+                # 并撑满页面宽度，再设置所有行文字垂直居中、第一行文字水平居中
+                set_doc_format.set_tables_auto_adjust_and_align()
             
             if self.chk_change_content_format.get():
                 indent_style = self.cmb_content_indent.get()
@@ -1055,19 +1226,43 @@ class MainForm:
                 font_size = self.cmb_content_font_size.get()
                 if font == "不变更":
                     font = None
+                if font_size == "不变更":
+                    font_size = None
                 if indent_style == "不变更":
                     indent_style = None
                 if alignment == "不变更":
                     alignment = None
+                # 表格内段落与正文共用「正文」样式，而 set_content_style 改的
+                # 是样式本身——不保护的话，表格文字会被一并改成与正文相同的
+                # 字号/对齐/缩进。改样式前先快照表格内段落的有效格式，
+                # 改完立即以直接格式写回，使表格格式只由"变更图片与表格的
+                # 格式"负责。
+                table_format_snapshot = \
+                    set_doc_format.snapshot_table_paragraph_format()
+
                 set_doc_format.set_content_format(
                     indent_style, alignment, font, font_size,
                     None,
                     self.chk_delete_empty_lines.get(),
                     self.chk_standard_line_spacing.get())
+
+                # 同步设置文档的「正文」样式本身（新版式 / 无直接格式的段落
+                # 也随之一致）。传入的 None 表示该项在界面上是"不变更"。
+                try:
+                    set_doc_format.set_content_style(
+                        indent_style, alignment, font, font_size)
+                finally:
+                    set_doc_format.restore_table_paragraph_format(
+                        table_format_snapshot)
             
             if self.chk_change_level_title_format.get():
                 self._set_level_title_styles(set_doc_format)
-            
+
+            # 表格与其上下段落间隔18磅：必须放在正文、标题格式处理之后，
+            # 否则相邻段落的段前/段后间距会被"标准行段间距"及标题样式清零
+            if self.chk_change_image_and_table_format.get():
+                set_doc_format.set_table_surrounding_spacing()
+
             filename = self.txt_new_filename.get().strip()
             if not filename:
                 filename = os.path.basename(self.work_doc.FullName)
@@ -1086,6 +1281,28 @@ class MainForm:
         # 记录用户设置了具体序号样式（非"无序号"、非"不变更"）的级别，
         # 这些级别的段落需要先清除已有编号再应用新样式，确保旧编号被替换
         replace_numbering_levels = set()
+        # 字体/字号/缩进方式选择"不变更"的级别：这些级别必须保留段落处理前的
+        # 字体、字号与缩进。集合在这里（任何样式被创建/改动之前）直接从下拉框
+        # 读取，供文末的"处理前快照"使用——晚于 set_title_styles 读取就只能
+        # 读到已被改动的值。
+        keep_font_levels = set()
+        keep_size_levels = set()
+        keep_indent_levels = set()
+        title_indent_styles = {}        # 级别索引 -> 界面上的"缩进方式"文本
+        for i in range(5):
+            try:
+                if not self.level_title_font_vars[i].get() or \
+                        self.level_title_font_vars[i].get() == "不变更":
+                    keep_font_levels.add(i)
+                if not self.level_title_font_size_vars[i].get() or \
+                        self.level_title_font_size_vars[i].get() == "不变更":
+                    keep_size_levels.add(i)
+                indent_value = self.level_title_indent_vars[i].get()
+                title_indent_styles[i] = indent_value
+                if not indent_value or indent_value == "不变更":
+                    keep_indent_levels.add(i)
+            except Exception:
+                pass
 
         try:
             # 获取文档对象，优先使用格式设置对象中的文档，其次使用当前工作文档
@@ -1099,6 +1316,33 @@ class MainForm:
 
             # 获取文档中的段落总数
             para_count = doc.Paragraphs.Count
+
+            # ---- 处理前快照：记录"不变更"级别段落的字体、字号与缩进 ----
+            # 这一步必须早于任何 set_title_styles 调用。set_title_styles 会
+            # 创建/改动"标题 N"样式并链接列表模板，可能连带改变段落的有效
+            # 字体、字号与缩进；那时再读就只能读到已经被改动的值，"保留原
+            # 格式"也就失效了。因此先把所有需要保留的段落值一次读全，
+            # 最后统一写回。
+            preserved_fonts = {}        # para_index -> (字号, {槽位: 字体名}, {缩进属性: 值})
+            for para_index in range(1, para_count + 1):
+                try:
+                    paragraph = doc.Paragraphs(para_index)
+                    level_index = set_doc_format.get_paragraph_outline_level(paragraph)
+                    if level_index < 1 or level_index > 5:
+                        continue
+                    idx = level_index - 1
+                    need_size = idx in keep_size_levels
+                    need_font = idx in keep_font_levels
+                    need_indent = idx in keep_indent_levels
+                    if not need_size and not need_font and not need_indent:
+                        continue
+                    size = get_effective_font_size(paragraph.Range) if need_size else None
+                    names = get_effective_font_names(paragraph.Range) if need_font else None
+                    indents = get_effective_indents(paragraph.Range) if need_indent else None
+                    if size is not None or names or indents:
+                        preserved_fonts[para_index] = (size, names, indents)
+                except Exception:
+                    continue
 
             # 遍历文档中的每一个段落（从1开始，Word对象索引从1开始）
             for para_index in range(1, para_count + 1):
@@ -1201,6 +1445,27 @@ class MainForm:
                             paragraph.Range.ListFormat.RemoveNumbers()
                         except:
                             pass
+
+                    # ---- 写回处理前的字体/字号/缩进（本段落处理的最后一步）----
+                    # 对"不变更"的级别，用处理前快照里的值以直接格式覆盖回来。
+                    # 必须放在最末尾：套用"标题 N"样式、LinkToListTemplate、
+                    # ApplyListTemplateWithLevel 等操作都会把列表模板级别的字体
+                    # 与缩进位置（NumberPosition / TextPosition）带到段落上，
+                    # 先写就会被冲掉。
+                    if level_styles[level_index - 1] is not None:
+                        saved_size, saved_font_names, saved_indents = \
+                            preserved_fonts.get(para_index, (None, None, None))
+                        apply_font_size(paragraph.Range, saved_size)
+                        apply_font_names(paragraph.Range, saved_font_names)
+                        if (level_index - 1) in keep_indent_levels:
+                            # "不变更"：还原段落处理前的缩进
+                            apply_indents(paragraph.Range, saved_indents)
+                        else:
+                            # 明确选了缩进方式：在列表模板之后强制生效，
+                            # 否则会被列表级别的 NumberPosition 顶掉
+                            apply_indent_style(
+                                paragraph.Range.ParagraphFormat,
+                                title_indent_styles.get(level_index - 1))
                 except:
                     # 忽略单个段落处理时的异常，继续处理下一个段落
                     continue
