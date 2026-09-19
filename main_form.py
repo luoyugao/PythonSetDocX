@@ -1258,6 +1258,18 @@ class MainForm:
             if self.chk_change_level_title_format.get():
                 self._set_level_title_styles(set_doc_format)
 
+            # 图片段落不缩进（收尾钉死）：必须放在正文/标题格式处理之后。
+            # 两条触发路径：
+            #   - 改了「正文」样式（set_content_style）——图片段落多是该样式，
+            #     样式里的首行缩进会顺着继承把图片顶偏；
+            #   - 处理过图片与表格（set_images_and_tables）——那时写的缩进=0
+            #     可能因与当时样式值相同而被 Word 省掉，需再钉一次。
+            # 由"不缩进"复选框决定是否保留图片的原缩进。
+            if (self.chk_change_image_and_table_format.get() or
+                    self.chk_change_content_format.get()) and \
+                    not table_only and self.chk_image_no_indent.get():
+                set_doc_format.set_image_paragraph_no_indent()
+            
             # 表格与其上下段落间隔18磅：必须放在正文、标题格式处理之后，
             # 否则相邻段落的段前/段后间距会被"标准行段间距"及标题样式清零
             if self.chk_change_image_and_table_format.get():

@@ -161,6 +161,14 @@ class EventHandlers:
         
         if self.main_form.chk_change_level_title_format.get():
             self._set_level_title_styles(set_doc_format)
+
+        # 图片段落不缩进（收尾钉死）：放在正文/标题格式处理之后。
+        # set_content_style 改的是「正文」样式本身，图片段落多为该样式，
+        # 样式里的首行缩进会被继承，图片因此被顶偏；此处用直接格式再清零一次。
+        if (self.main_form.chk_change_image_and_table_format.get() or
+                self.main_form.chk_change_content_format.get()) and \
+                self.main_form.chk_image_no_indent.get():
+            set_doc_format.set_image_paragraph_no_indent()
     
     def select_active_doc_button_click(self):
         try:

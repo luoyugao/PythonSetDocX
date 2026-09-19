@@ -236,6 +236,25 @@ def apply_indents(range_obj, indents):
             pass
 
 
+def clear_indents(range_obj):
+    """把 Range 所在段落的缩进属性全部清零（直接格式）。
+
+    用于"图片段落必须不缩进"：只把 FirstLineIndent 置 0 是不够的——
+      - "悬挂缩进"在 Word 里是 LeftIndent>0 且 FirstLineIndent<0，
+        只清首行负值会剩下一段左缩进，图片看上去依然被顶偏；
+      - 中文文档的"缩进2字符"存在字符单位属性里，点值清零并不能
+        保证字符单位值同步归零（二者是独立的两个属性）。
+    因此 6 个缩进属性成对清零，先点值后字符单位值。
+
+    与 apply_indents 相反，这里是"无条件写 0"，不做取值有效性判断。
+    """
+    for attr in _INDENT_ATTRS:
+        try:
+            setattr(range_obj.ParagraphFormat, attr, 0)
+        except Exception:
+            pass
+
+
 # 每字符对应的磅值：沿用"变更正文格式"原有算法（0.35厘米 × 28.35），
 # 保证标题与正文在同样选项下缩进一致。
 _PT_PER_CHAR = 0.35 * 28.35

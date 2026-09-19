@@ -5,7 +5,7 @@ from word_constants import (set_range_style, get_range_information, get_range_st
                             get_list_gallery, apply_indent_style,
                             get_effective_font_names, get_effective_font_size,
                             get_effective_indents, apply_font_names,
-                            apply_font_size, apply_indents)
+                            apply_font_size, apply_indents, clear_indents)
 
 
 # 界面的"对齐方式"文本 → Word 段落对齐常量
@@ -740,7 +740,10 @@ class SetDocumentFormat:
 
         Args:
             wrap_as_inline: 是否将图片文字环绕类型设为嵌入型（默认True）
-            no_indent: 是否取消图片/表格所在段落的缩进（默认True）
+            no_indent: 是否取消图片/表格所在段落的缩进（默认True）。
+                图片段落"不缩进"的最终保证不靠这里——本方法执行时正文样式
+                尚未变动，清掉的缩进可能随后被「正文」样式的缩进带回来，
+                流程末尾必须再调一次 set_image_paragraph_no_indent()。
             max_width: 兼容保留参数。表格宽度已统一由 _auto_adjust_tables()
                 处理（先“根据内容调整表格”，再撑满页面宽度），不再受该参数影响
             table_only: 是否只处理表格，跳过所有图片相关的处理（默认False）
@@ -775,11 +778,12 @@ class SetDocumentFormat:
                         if max_width and page_width is not None:
                             inline_shape.Width = page_width
 
+                        # 图片所在段落一律不缩进：这里清的是段落缩进（点值 +
+                        # 字符单位值全部归零，见 clear_indents）。只清
+                        # FirstLineIndent 会在"悬挂缩进"下留下左缩进，
+                        # 图片仍被顶偏。
                         if no_indent:
-                            try:
-                                inline_shape.Range.ParagraphFormat.FirstLineIndent = 0
-                            except:
-                                pass
+                            clear_indents(inline_shape.Range)
                     except:
                         pass
 
@@ -806,6 +810,74 @@ class SetDocumentFormat:
 
         # 注意：表格与上下段落的18磅间隔由 set_table_surrounding_spacing() 负责，
         # 它必须在正文格式处理之后调用，否则会被"标准行段间距"清零。
+
+    def set_image_paragraph_no_indent(self):
+        """把文档中所有图片所在段落的缩进清零（图片段落一律不缩进）。
+
+        为什么需要单独这一步、且必须放在流程末尾：
+
+        1）时机问题。set_images_and_tables() 在"变更正文格式"之前执行，
+           那时图片段落的缩进确实清了；但紧接着正文处理会改「正文」样式
+           本身（set_content_style），而图片段落大多正是「正文」样式。
+           样式一旦被设成"首行缩进2字符"，图片段落便会顺着样式继承出缩进
+           ——图片于是又被顶偏。
+        2）直接格式可能"存不下来"。在段落上写"缩进=0"时，如果该值与样式
+           当时的值相同，Word 会把这个直接格式省掉（等同于没写），之后
+           样式一改，段落就跟着变。
+
+        所以图片的缩进必须在正文/标题样式都处理完之后，再用直接格式钉一次。
+        调用方（main_form、event_handlers）在两个处理流程的末尾调用本方法。
+
+        覆盖对象：
+            - 嵌入型图片所在段落（InlineShapes，含表格内的图片）；
+            - 浮动图片的锚点段落（未转嵌入型时同样要清）；
+            - 图片与文字同处一段的段落，整体按"图片段落"处理。
+        清零的是全部 6 个缩进属性（点值 + 字符单位值），见 clear_indents。
+
+        Returns:
+            set: 已处理的段落起始位置集合
+        """
+        if self.work_doc is None:
+            return set()
+
+        handled = set()
+
+        def _clear_paragraph(paragraph):
+            try:
+                key = int(paragraph.Range.Start)
+            except Exception:
+                return
+            if key in handled:
+                return
+            handled.add(key)
+            clear_indents(paragraph.Range)
+
+        # 嵌入型图片（含表格内的图片）
+        try:
+            for inline_shape in self.work_doc.InlineShapes:
+                try:
+                    if inline_shape.Type != wc.wdInlineShapePicture:
+                        continue
+                    _clear_paragraph(inline_shape.Range.Paragraphs(1))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # 浮动图片的锚点段落
+        try:
+            for shape in self.work_doc.Shapes:
+                try:
+                    anchor = shape.Anchor
+                    if anchor is None:
+                        continue
+                    _clear_paragraph(anchor.Paragraphs(1))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return handled
 
     def set_table_paragraph_spacing(self):
         """设置表格内段落为单倍行距，段前、段后各空0.5行。"""
