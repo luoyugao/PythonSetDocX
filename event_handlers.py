@@ -79,6 +79,25 @@ class EventHandlers:
         set_doc_format = SetDocumentFormat(doc=self.main_form.work_doc)
         set_doc_format.delete_all_pictures()
     
+    def _make_status_reporter(self, stage, every=5):
+        """生成向状态栏上报细粒度进度的回调（带计数与节流）。
+
+        与 MainForm._make_status_reporter 行为一致：给每条进度消息加上
+        "（第 n 项）"计数，避免长耗时的逐段/逐个对象处理期间状态栏一直停在
+        粗粒度文字上。
+        """
+        state = {"n": 0}
+        step = max(1, int(every))
+
+        def report(message):
+            state["n"] += 1
+            if state["n"] % step:
+                return
+            self.main_form._set_status(
+                f"正在处理{stage}…（第 {state['n']} 项）{message}")
+
+        return report
+
     def button_format_adjust_click(self):
         import doc_parameters_manager as dpm
         
@@ -86,43 +105,18 @@ class EventHandlers:
         
         from set_document_format import SetDocumentFormat
         set_doc_format = SetDocumentFormat(doc=dpm.work_doc)
-        
-        if self.main_form.chk_change_page_margin.get():
-            set_doc_format.set_page_margins(
-                float(self.main_form.top_margin.get()),
-                float(self.main_form.bottom_margin.get()),
-                float(self.main_form.left_margin.get()),
-                float(self.main_form.right_margin.get()))
-        
-        if self.main_form.chk_add_page_num.get():
-            self._add_page_number()
-        
-        if self.main_form.chk_change_main_title_format.get():
-            # "不变更"必须转成 None：set_main_title_format 以 None 表示该项
-            # 不修改，并把段落原有字体字号写回样式。若直接把字符串
-            # "不变更"传下去，会被当成字体名/字号名写进 Word。
-            main_title_font = self.main_form.cmb_main_title_font.get()
-            main_title_size = self.main_form.cmb_main_title_font_size.get()
-            if main_title_font == "不变更":
-                main_title_font = None
-            if main_title_size == "不变更":
-                main_title_size = None
-            set_doc_format.set_main_title_format(
-                main_title_font,
-                main_title_size,
-                self.main_form.chk_main_title_bold.get())
-        
-        if self.main_form.chk_change_image_and_table_format.get():
-            set_doc_format.set_images_and_tables(
-                wrap_as_inline=True,
-                no_indent=self.main_form.chk_image_no_indent.get(),
-                max_width=self.main_form.chk_max_width.get())
 
-            # 表格统一格式：按内容自动调整后撑满页面宽度，
-            # 所有行垂直居中、首行水平居中。
-            # 放在勾选判断内：未勾选时不应改动图片与表格。
-            set_doc_format.set_tables_auto_adjust_and_align()
-        
+        self.main_form._set_status("正在调整文档格式…")
+
+        # "只处理表格"复选框：在图片与表格处理分支中赋值
+        table_only = False
+
+        # ====================================================
+        # 第一步：变更正文格式（勾选时最先执行）
+        # 正文格式是后续所有处理的基础：「正文」样式一旦改变，图片段落、
+        # 表格内段落与章节标题的有效格式都会随之变化，因此必须先定下正文
+        # 格式，再处理图片、表格与标题。
+        # ====================================================
         if self.main_form.chk_change_content_format.get():
             indent_style = self.main_form.cmb_content_indent.get()
             alignment = self.main_form.cmb_content_align.get()
@@ -138,37 +132,94 @@ class EventHandlers:
             if alignment == "不变更":
                 alignment = None
             
-            # 表格内段落与正文共用「正文」样式，而 set_content_style 改的是
-            # 样式本身——不保护的话表格文字会被一并改成与正文相同的格式。
-            # 改样式前快照，改完以直接格式写回。
-            table_format_snapshot = \
-                set_doc_format.snapshot_table_paragraph_format()
+            # 表格与文本框（含代码框）内段落与正文共用「正文」样式，而
+            # set_content_style 改的是样式本身——不保护的话框内文字会被
+            # 一并改成与正文相同的格式。改样式前快照，改完以直接格式写回
+            # （字号例外：代码框与文本框内的字号跟随正文设置）。
+            self.main_form._set_status("正在变更正文格式…")
+            protected_format_snapshot = \
+                set_doc_format.snapshot_protected_paragraph_format()
 
             set_doc_format.set_content_format(
                 indent_style, alignment, font, font_size,
                 None,
                 self.main_form.chk_delete_empty_lines.get(),
-                self.main_form.chk_standard_line_spacing.get())
+                self.main_form.chk_standard_line_spacing.get(),
+                progress=self._make_status_reporter("正文格式", 5))
 
             # 同步设置文档的「正文」样式本身（新版式 / 无直接格式的段落
             # 也随之一致）。传入的 None 表示该项在界面上是"不变更"。
             try:
                 set_doc_format.set_content_style(
-                    indent_style, alignment, font, font_size)
+                    indent_style, alignment, font, font_size,
+                    progress=self._make_status_reporter("正文样式", 1))
             finally:
-                set_doc_format.restore_table_paragraph_format(
-                    table_format_snapshot)
+                set_doc_format.restore_protected_paragraph_format(
+                    protected_format_snapshot)
+
+        if self.main_form.chk_change_page_margin.get():
+            self.main_form._set_status("正在变更页面边距…")
+            set_doc_format.set_page_margins(
+                float(self.main_form.top_margin.get()),
+                float(self.main_form.bottom_margin.get()),
+                float(self.main_form.left_margin.get()),
+                float(self.main_form.right_margin.get()))
+        
+        if self.main_form.chk_add_page_num.get():
+            self.main_form._set_status("正在添加页码…")
+            self._add_page_number()
+
+        if self.main_form.chk_change_main_title_format.get():
+            self.main_form._set_status("正在设置文章首行总标题格式…")
+            # "不变更"必须转成 None：set_main_title_format 以 None 表示该项
+            # 不修改，并把段落原有字体字号写回样式。若直接把字符串
+            # "不变更"传下去，会被当成字体名/字号名写进 Word。
+            main_title_font = self.main_form.cmb_main_title_font.get()
+            main_title_size = self.main_form.cmb_main_title_font_size.get()
+            if main_title_font == "不变更":
+                main_title_font = None
+            if main_title_size == "不变更":
+                main_title_size = None
+            set_doc_format.set_main_title_format(
+                main_title_font,
+                main_title_size,
+                self.main_form.chk_main_title_bold.get(),
+                progress=self._make_status_reporter("总标题格式", 1))
+        
+        if self.main_form.chk_change_image_and_table_format.get():
+            table_only = self.main_form.chk_table_only.get()
+            self.main_form._set_status("正在处理图片与表格格式…")
+            set_doc_format.set_images_and_tables(
+                wrap_as_inline=True,
+                no_indent=self.main_form.chk_image_no_indent.get(),
+                max_width=self.main_form.chk_max_width.get(),
+                table_only=table_only,
+                progress=self._make_status_reporter("图片与表格格式", 5))
+
+            # 表格统一格式：按内容自动调整后撑满页面宽度，
+            # 所有行垂直居中、首行水平居中。
+            # 放在勾选判断内：未勾选时不应改动图片与表格。
+            self.main_form._set_status("正在调整表格宽度与对齐方式…")
+            set_doc_format.set_tables_auto_adjust_and_align(
+                progress=self._make_status_reporter("表格宽度与对齐", 1))
         
         if self.main_form.chk_change_level_title_format.get():
+            self.main_form._set_status("正在变更各章节标题格式…")
             self._set_level_title_styles(set_doc_format)
 
-        # 图片段落不缩进（收尾钉死）：放在正文/标题格式处理之后。
-        # set_content_style 改的是「正文」样式本身，图片段落多为该样式，
-        # 样式里的首行缩进会被继承，图片因此被顶偏；此处用直接格式再清零一次。
+        # 图片段落与表格内段落不缩进（收尾钉死）：放在正文/标题格式处理之后。
+        # set_content_style 改的是「正文」样式本身，图片段落与单元格段落多为
+        # 该样式，样式里的首行缩进会被继承；表格内段落还会被表格格式快照
+        # 把继承来的缩进写成直接格式，因此两者都要用直接格式再清零一次。
         if (self.main_form.chk_change_image_and_table_format.get() or
                 self.main_form.chk_change_content_format.get()) and \
                 self.main_form.chk_image_no_indent.get():
-            set_doc_format.set_image_paragraph_no_indent()
+            self.main_form._set_status("正在取消图片与表格段落的缩进…")
+            if not table_only:
+                set_doc_format.set_image_paragraph_no_indent(
+                    progress=self._make_status_reporter("图片段落缩进", 5))
+            set_doc_format.set_table_paragraph_no_indent(
+                progress=self._make_status_reporter("表格段落缩进", 5))
     
     def select_active_doc_button_click(self):
         try:
@@ -434,6 +485,10 @@ class EventHandlers:
             preserved_fonts = {}        # para_index -> (字号, {槽位: 字体名}, {缩进属性: 值})
             for para_index in range(1, para_count + 1):
                 try:
+                    # 首段是文章总标题，不属于章节标题：不参与快照
+                    if para_index == 1:
+                        continue
+
                     paragraph = doc.Paragraphs(para_index)
                     level_index = set_doc_format.get_paragraph_outline_level(paragraph)
                     if level_index < 1 or level_index > 5:
@@ -454,9 +509,13 @@ class EventHandlers:
             
             for para_index in range(1, para_count + 1):
                 try:
+                    # 首段是文章总标题，不属于章节标题：章节标题格式不处理它
+                    if para_index == 1:
+                        continue
+
                     paragraph = doc.Paragraphs(para_index)
                     level_index = set_doc_format.get_paragraph_outline_level(paragraph)
-                    
+
                     if level_index < 1 or level_index > 5:
                         continue
                     
@@ -484,7 +543,9 @@ class EventHandlers:
                         
                         if font is not None or font_size is not None or indent is not None or number_style is not None:
                             self.level_style[level_index - 1] = set_doc_format.set_title_styles(
-                                level_index, font, font_size, number_style, indent)
+                                level_index, font, font_size, number_style, indent,
+                                progress=self._make_status_reporter(
+                                    f"{level_index}级标题样式", 1))
                     
                     if self.level_style[level_index - 1] is not None:
                         set_range_style(paragraph.Range, self.level_style[level_index - 1])

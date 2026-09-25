@@ -50,6 +50,10 @@ wdCellAlignVerticalBottom = 3
 
 msoAutomationSecurityLow = 1
 
+# 形状类型：组合形状（Group）。组合里的文本框不会出现在顶层 Shapes 里，
+# 需要递归 GroupItems 才能找到。
+msoGroup = 6
+
 wdFirstCharacterLineNumber = 10
 wdWithInTable = 12
 wdRelativeHorizontalPositionPage = 0
@@ -201,6 +205,13 @@ _INDENT_ATTRS = ('LeftIndent', 'RightIndent', 'FirstLineIndent',
                  'CharacterUnitLeftIndent', 'CharacterUnitRightIndent',
                  'CharacterUnitFirstLineIndent')
 
+# 按"点值 / 字符单位值"把上面 6 个属性分开，供需要指定写入顺序的场合使用。
+# 直接由 _INDENT_ATTRS 推导，避免两处清单不同步。
+_POINT_INDENT_ATTRS = tuple(
+    attr for attr in _INDENT_ATTRS if not attr.startswith('CharacterUnit'))
+_CHAR_UNIT_INDENT_ATTRS = tuple(
+    attr for attr in _INDENT_ATTRS if attr.startswith('CharacterUnit'))
+
 
 def get_effective_indents(range_obj):
     """读取 Range 的有效缩进属性，返回 {属性名: 值}。
@@ -228,6 +239,33 @@ def apply_indents(range_obj, indents):
     if not indents:
         return
     for attr in _INDENT_ATTRS:
+        if attr not in indents:
+            continue
+        try:
+            setattr(range_obj.ParagraphFormat, attr, indents[attr])
+        except Exception:
+            pass
+
+
+def apply_indents_pinned(range_obj, indents):
+    """按"先字符单位值、后点值"的顺序写回缩进。
+
+    与 apply_indents 的差别只有写入顺序，用于**把"不缩进"钉住**：
+
+    快照里"本来就不缩进"时 6 个缩进属性全是 0。Word 把"字符单位值 = 0"
+    视为未设置直接格式，若它最后写，段落会退回继承样式的缩进——文本框里
+    尤其明显（「正文」样式被改成"首行缩进2字符"后，框内段落又缩进了，
+    实测点值仍是 0、字符单位值也是 0，但有效首行缩进变成了 2 字符）。
+    把点值放在最后写，0 才以直接格式生效。
+
+    快照里字符单位值非 0 时（原本就是"缩进N字符"）两种顺序效果相同，
+    已实测，故此顺序可无差别使用。
+
+    与 apply_indents 一样，indents 里没有的属性不写、为空时不操作。
+    """
+    if not indents:
+        return
+    for attr in _CHAR_UNIT_INDENT_ATTRS + _POINT_INDENT_ATTRS:
         if attr not in indents:
             continue
         try:

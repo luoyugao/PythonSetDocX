@@ -75,4 +75,6 @@ exe = EXE(
     entitlements_file=None,
     # 由 make_icon.py 生成，内嵌 16/24/32/48/64/128/256 七种尺寸
     icon=os.path.join(project_dir, 'app.ico'),
+    # 版本资源：右键"属性-详细信息"可看到"文档格式设置程序060930"
+    version=os.path.join(project_dir, 'version_info.txt'),
 )

@@ -201,8 +201,8 @@ class MainForm:
     def __init__(self, root):
         """初始化主窗体"""
         self.root = root
-        # 设置窗口标题为"文档格式设置PY1.0"
-        self.root.title("文档格式设置PY程序1.0")
+        # 设置窗口标题为"文档格式设置程序060921"
+        self.root.title("文档格式设置程序060921")
         # 设置窗口与任务栏图标（开发运行时与源码同目录，打包后由 exe 释放到临时目录）
         try:
             self.root.iconbitmap(resource_path("app.ico"))
@@ -731,6 +731,22 @@ class MainForm:
         """获取当前文档路径"""
         return self._lab_full_filename_label.cget("text")
 
+    def _set_status(self, text):
+        """更新状态栏文字并立即刷新显示。
+
+        格式调整这类耗时操作由一连串 COM 调用组成，全程占用主线程，
+        界面不会自动重绘：只 config 而不刷新的话，用户看到的会一直停在
+        旧文字上，直到全部处理结束——"运行时间较长的进程"因此失去进度感。
+
+        这里用 update_idletasks 而不是 update：前者只跑空闲任务（重绘），
+        不处理鼠标、键盘等输入事件，长流程不会被中途的点击打断或重入。
+        """
+        try:
+            self.status_bar.config(text=text)
+            self.status_bar.update_idletasks()
+        except Exception:
+            pass
+
     def _load_directory_tree(self, root_path, levels):
         """加载目录树结构"""
         # 清空Treeview中现有的所有节点
@@ -1143,6 +1159,34 @@ class MainForm:
                 # 忽略连接过程中的异常
                 pass
     
+    def _make_status_reporter(self, stage, every=5):
+        """生成向状态栏上报细粒度进度的回调（带计数与节流）。
+
+        设置正文、图片、表格与标题都是逐段/逐个对象的 COM 调用，耗时较长，
+        只报"正在处理图片与表格格式…"这类粗粒度文字会让用户看不到进展。
+        这里给每条消息加上"（第 n 项）"计数，并按 every 项节流上报。
+
+        每次上报都走 _set_status（config + update_idletasks），只重绘不处理
+        输入事件，因此不会让长流程被点击打断。
+
+        Args:
+            stage: 阶段名称，如"图片与表格格式"
+            every: 每处理多少项上报一次（至少 1）
+
+        Returns:
+            callable: f(message) —— 未到上报点时静默返回
+        """
+        state = {"n": 0}
+        step = max(1, int(every))
+
+        def report(message):
+            state["n"] += 1
+            if state["n"] % step:
+                return
+            self._set_status(f"正在处理{stage}…（第 {state['n']} 项）{message}")
+
+        return report
+
     def _on_format_adjust(self):
         """调整文档格式：以Word当前激活的文档为目标，按界面参数调整格式"""
         # 确保Word应用已连接
@@ -1153,72 +1197,35 @@ class MainForm:
             return
         
         try:
-            self.status_bar.config(text="")
-            
+            self._set_status("正在调整文档格式…")
+
             active_doc = self.word_app.ActiveDocument
             if active_doc is None:
                 messagebox.showwarning("警告", "Word中没有打开的文档")
                 return
-            
+
             self.work_doc = active_doc
             self._set_full_filename(self.work_doc.FullName)
             dpm.word_app = self.word_app
             dpm.work_doc = self.work_doc
             self._update_filename_from_first_paragraph()
-            
+
             # 执行格式调整
             from set_document_format import SetDocumentFormat
             from page_number_manager import PageNumberManager
-            
+
             set_doc_format = SetDocumentFormat(doc=self.work_doc)
-            
-            if self.chk_change_page_margin.get():
-                set_doc_format.set_page_margins(
-                    float(self.top_margin.get()),
-                    float(self.bottom_margin.get()),
-                    float(self.left_margin.get()),
-                    float(self.right_margin.get()))
-            
-            if self.chk_add_page_num.get():
-                PageNumberManager.add_page_numbers_custom(self.work_doc)
-            
-            if self.chk_change_main_title_format.get():
-                font = self.cmb_main_title_font.get()
-                font_size = self.cmb_main_title_font_size.get()
-                if font == "不变更":
-                    font = None
-                if font_size == "不变更":
-                    font_size = None
-                set_doc_format.set_main_title_format(
-                    font, font_size,
-                    self.chk_main_title_bold.get())
-            
-            # 图片与表格格式设置（先执行，将浮动图形转为嵌入型，
-            # 后续的边框、居中、表格最大宽度操作才能正确应用到转换后的对象上）
-            # 未勾选"变更图片与表格的格式"时，下面的图片边框、图片居中和
-            # 表格统一格式全部不执行——否则图片的边框、对齐与位置会被改动。
+
+            # "只处理表格"复选框：在图片与表格处理分支中赋值，
+            # 未勾选"变更图片与表格的格式"时保持 False
             table_only = False
-            if self.chk_change_image_and_table_format.get():
-                table_only = self.chk_table_only.get()
-                set_doc_format.set_images_and_tables(
-                    wrap_as_inline=True,
-                    no_indent=self.chk_image_no_indent.get(),
-                    max_width=self.chk_max_width.get(),
-                    table_only=table_only)
 
-                # 勾选"只处理表格"时，以下图片相关操作一并跳过
-                if not table_only:
-                    # 为所有图片添加1px黑色外框
-                    set_doc_format.add_image_border()
-
-                    # 居中所有图片（会把嵌入型图片所在段落设为居中，
-                    # 并把浮动图片定位到页面水平居中，是明显改变图片位置的操作）
-                    set_doc_format.center_all_images()
-
-                # 表格统一格式：先按内容自动调整表格（根据内容调整表格）
-                # 并撑满页面宽度，再设置所有行文字垂直居中、第一行文字水平居中
-                set_doc_format.set_tables_auto_adjust_and_align()
-            
+            # ====================================================
+            # 第一步：变更正文格式（勾选时最先执行）
+            # 正文格式是后续所有处理的基础：「正文」样式一旦改变，图片段落、
+            # 表格内段落与章节标题的有效格式都会随之变化，因此必须先定下正文
+            # 格式，再处理图片、表格与标题。
+            # ====================================================
             if self.chk_change_content_format.get():
                 indent_style = self.cmb_content_indent.get()
                 alignment = self.cmb_content_align.get()
@@ -1232,59 +1239,139 @@ class MainForm:
                     indent_style = None
                 if alignment == "不变更":
                     alignment = None
-                # 表格内段落与正文共用「正文」样式，而 set_content_style 改的
-                # 是样式本身——不保护的话，表格文字会被一并改成与正文相同的
-                # 字号/对齐/缩进。改样式前先快照表格内段落的有效格式，
-                # 改完立即以直接格式写回，使表格格式只由"变更图片与表格的
-                # 格式"负责。
-                table_format_snapshot = \
-                    set_doc_format.snapshot_table_paragraph_format()
+
+                self._set_status("正在变更正文格式…")
+
+                # 表格与文本框（含代码框）内段落与正文共用「正文」样式，
+                # 而 set_content_style 改的是样式本身——不保护的话，框内文字
+                # 会被一并改成与正文相同的字体/对齐/缩进。改样式前先快照
+                # 受保护容器内段落的有效格式，改完立即以直接格式写回，
+                # 使框内格式只由"变更图片与表格的格式"或作者自己负责
+                # （字号例外：代码框与文本框内的字号跟随正文设置）。
+                protected_format_snapshot = \
+                    set_doc_format.snapshot_protected_paragraph_format()
 
                 set_doc_format.set_content_format(
                     indent_style, alignment, font, font_size,
                     None,
                     self.chk_delete_empty_lines.get(),
-                    self.chk_standard_line_spacing.get())
+                    self.chk_standard_line_spacing.get(),
+                    progress=self._make_status_reporter("正文格式", 5))
 
                 # 同步设置文档的「正文」样式本身（新版式 / 无直接格式的段落
                 # 也随之一致）。传入的 None 表示该项在界面上是"不变更"。
                 try:
                     set_doc_format.set_content_style(
-                        indent_style, alignment, font, font_size)
+                        indent_style, alignment, font, font_size,
+                        progress=self._make_status_reporter("正文样式", 1))
                 finally:
-                    set_doc_format.restore_table_paragraph_format(
-                        table_format_snapshot)
+                    set_doc_format.restore_protected_paragraph_format(
+                        protected_format_snapshot)
+
+            if self.chk_change_page_margin.get():
+                self._set_status("正在变更页面边距…")
+                set_doc_format.set_page_margins(
+                    float(self.top_margin.get()),
+                    float(self.bottom_margin.get()),
+                    float(self.left_margin.get()),
+                    float(self.right_margin.get()))
+            
+            if self.chk_add_page_num.get():
+                self._set_status("正在添加页码…")
+                PageNumberManager.add_page_numbers_custom(self.work_doc)
+
+            if self.chk_change_main_title_format.get():
+                self._set_status("正在设置文章首行总标题格式…")
+                font = self.cmb_main_title_font.get()
+                font_size = self.cmb_main_title_font_size.get()
+                if font == "不变更":
+                    font = None
+                if font_size == "不变更":
+                    font_size = None
+                set_doc_format.set_main_title_format(
+                    font, font_size,
+                    self.chk_main_title_bold.get(),
+                    progress=self._make_status_reporter("总标题格式", 1))
+            
+            # 图片与表格格式设置（正文格式之后执行，将浮动图形转为嵌入型，
+            # 后续的边框、居中、表格最大宽度操作才能正确应用到转换后的对象上）
+            # 未勾选"变更图片与表格的格式"时，下面的图片边框、图片居中和
+            # 表格统一格式全部不执行——否则图片的边框、对齐与位置会被改动。
+            if self.chk_change_image_and_table_format.get():
+                table_only = self.chk_table_only.get()
+                self._set_status("正在处理图片与表格格式…")
+                set_doc_format.set_images_and_tables(
+                    wrap_as_inline=True,
+                    no_indent=self.chk_image_no_indent.get(),
+                    max_width=self.chk_max_width.get(),
+                    table_only=table_only,
+                    progress=self._make_status_reporter("图片与表格格式", 5))
+
+                # 勾选"只处理表格"时，以下图片相关操作一并跳过
+                if not table_only:
+                    self._set_status("正在为图片添加边框并居中…")
+                    # 为所有图片添加1px黑色外框
+                    set_doc_format.add_image_border(
+                        progress=self._make_status_reporter("图片边框", 5))
+
+                    # 居中所有图片（会把嵌入型图片所在段落设为居中，
+                    # 并把浮动图片定位到页面水平居中，是明显改变图片位置的操作）
+                    set_doc_format.center_all_images(
+                        progress=self._make_status_reporter("图片居中", 5))
+
+                # 表格统一格式：先按内容自动调整表格（根据内容调整表格）
+                # 并撑满页面宽度，再设置所有行文字垂直居中、第一行文字水平居中
+                self._set_status("正在调整表格宽度与对齐方式…")
+                set_doc_format.set_tables_auto_adjust_and_align(
+                    progress=self._make_status_reporter("表格宽度与对齐", 1))
             
             if self.chk_change_level_title_format.get():
+                self._set_status("正在变更各章节标题格式…")
                 self._set_level_title_styles(set_doc_format)
 
-            # 图片段落不缩进（收尾钉死）：必须放在正文/标题格式处理之后。
-            # 两条触发路径：
-            #   - 改了「正文」样式（set_content_style）——图片段落多是该样式，
-            #     样式里的首行缩进会顺着继承把图片顶偏；
+            # 图片段落与表格内段落不缩进（收尾钉死）：必须放在正文/标题格式
+            # 处理之后。三条触发路径：
+            #   - 改了「正文」样式（set_content_style）——图片段落与单元格段落
+            #     多是该样式，样式里的首行缩进会顺着继承把图片顶偏、把单元格
+            #     文字顶出缩进；
             #   - 处理过图片与表格（set_images_and_tables）——那时写的缩进=0
-            #     可能因与当时样式值相同而被 Word 省掉，需再钉一次。
-            # 由"不缩进"复选框决定是否保留图片的原缩进。
+            #     可能因与当时样式值相同而被 Word 省掉，需再钉一次；
+            #   - 单元格段落的缩进还会被表格格式快照以直接格式写回，
+            #     不在这里清掉就会永久保留成"段首缩进"。
+            # 由"不缩进"复选框决定是否保留它们的原缩进。
             if (self.chk_change_image_and_table_format.get() or
                     self.chk_change_content_format.get()) and \
-                    not table_only and self.chk_image_no_indent.get():
-                set_doc_format.set_image_paragraph_no_indent()
-            
+                    self.chk_image_no_indent.get():
+                self._set_status("正在取消图片与表格段落的缩进…")
+                if not table_only:
+                    # "只处理表格"时不碰图片
+                    set_doc_format.set_image_paragraph_no_indent(
+                        progress=self._make_status_reporter("图片段落缩进", 5))
+                set_doc_format.set_table_paragraph_no_indent(
+                    progress=self._make_status_reporter("表格段落缩进", 5))
+
             # 表格与其上下段落间隔18磅：必须放在正文、标题格式处理之后，
             # 否则相邻段落的段前/段后间距会被"标准行段间距"及标题样式清零
             if self.chk_change_image_and_table_format.get():
-                set_doc_format.set_table_surrounding_spacing()
+                self._set_status("正在设置表格与上下段落的间距…")
+                set_doc_format.set_table_surrounding_spacing(
+                    progress=self._make_status_reporter("表格间距", 1))
 
             filename = self.txt_new_filename.get().strip()
             if not filename:
                 filename = os.path.basename(self.work_doc.FullName)
-            self.status_bar.config(text=f"《{filename}》调整文档格式完成")
-            
+            self._set_status(f"《{filename}》调整文档格式完成")
+
         except Exception as ex:
+            self._set_status(f"调整格式失败: {ex}")
             messagebox.showerror("错误", f"调整格式失败: {ex}")
     
     def _set_level_title_styles(self, set_doc_format):
-        """设置章节标题样式，遍历文档所有段落并应用对应级别的标题样式"""
+        """设置章节标题样式，遍历文档所有段落并应用对应级别的标题样式。
+
+        首段（文章总标题）不在处理范围内：它由 set_main_title_format 单独
+        负责，章节标题格式不改动它的样式、字体与段间距。
+        """
         # 初始化存储1-5级标题样式对象的列表，初始值为None表示尚未创建
         level_styles = [None, None, None, None, None]
         # 记录用户选择了"无序号"的级别（索引0-4），这些级别的段落需要
@@ -1335,9 +1422,16 @@ class MainForm:
             # 字体、字号与缩进；那时再读就只能读到已经被改动的值，"保留原
             # 格式"也就失效了。因此先把所有需要保留的段落值一次读全，
             # 最后统一写回。
+            self._set_status("正在读取各章节标题的原格式…")
             preserved_fonts = {}        # para_index -> (字号, {槽位: 字体名}, {缩进属性: 值})
             for para_index in range(1, para_count + 1):
                 try:
+                    # 首段是文章总标题，不属于章节标题：不参与快照
+                    # （与下面的处理循环保持一致，总标题由
+                    #  set_main_title_format 单独负责）
+                    if para_index == 1:
+                        continue
+
                     paragraph = doc.Paragraphs(para_index)
                     level_index = set_doc_format.get_paragraph_outline_level(paragraph)
                     if level_index < 1 or level_index > 5:
@@ -1359,6 +1453,18 @@ class MainForm:
             # 遍历文档中的每一个段落（从1开始，Word对象索引从1开始）
             for para_index in range(1, para_count + 1):
                 try:
+                    # 首段是文章总标题，不属于章节标题：章节标题格式不处理它
+                    # （总标题的格式由 set_main_title_format 单独负责，
+                    #  否则总标题的样式、字体、段间距都会被这里改掉）
+                    if para_index == 1:
+                        continue
+
+                    # 段落较多时每50段回报一次进度，避免长耗时操作期间
+                    # 状态栏一直停在"正在变更各章节标题格式…"上
+                    if para_index % 50 == 0:
+                        self._set_status(
+                            f"正在变更各章节标题格式… {para_index}/{para_count}")
+
                     # 获取当前段落对象
                     paragraph = doc.Paragraphs(para_index)
                     # 获取段落的大纲级别（1-9级，0表示正文）
@@ -1398,7 +1504,9 @@ class MainForm:
                         # 如果有至少一项属性需要修改，则创建该级别的标题样式
                         if font is not None or font_size is not None or indent is not None or number_style is not None:
                             level_styles[level_index - 1] = set_doc_format.set_title_styles(
-                                level_index, font, font_size, number_style, indent)
+                                level_index, font, font_size, number_style, indent,
+                                progress=self._make_status_reporter(
+                                    f"{level_index}级标题样式", 1))
 
                     # 对于需要替换编号的级别：先清除段落已有的直接列表格式，
                     # 再应用新样式，最后直接应用列表模板到段落范围。
@@ -1635,6 +1743,8 @@ class MainForm:
         try:
             from win32com.client import constants as wc
 
+            self._set_status("正在升级所有标题…")
+
             # 预检：若最高一级标题已为第1级，则不再执行升一级逻辑并提示
             for i in range(1, self.work_doc.Paragraphs.Count + 1):
                 para = self.work_doc.Paragraphs(i)
@@ -1665,7 +1775,7 @@ class MainForm:
                 if new_style is not None:
                     set_range_style(para.Range, new_style)
 
-            self.status_bar.config(text="所有标题已升一级")
+            self._set_status("所有标题已升一级")
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
 
@@ -1677,13 +1787,15 @@ class MainForm:
         
         try:
             from win32com.client import constants as wc
-            
+
+            self._set_status("正在降级所有标题…")
+
             # 遍历所有段落
             for i in range(1, self.work_doc.Paragraphs.Count + 1):
                 para = self.work_doc.Paragraphs(i)
                 style = get_range_style(para)
                 style_name = style.NameLocal
-                
+
                 # 根据当前样式名确定新样式
                 new_style = None
                 if style_name == "标题 1":
@@ -1699,8 +1811,8 @@ class MainForm:
                 
                 if new_style is not None:
                     set_range_style(para.Range, new_style)
-            
-            self.status_bar.config(text="所有标题已降一级")
+
+            self._set_status("所有标题已降一级")
         except Exception as ex:
             messagebox.showerror("错误", f"操作失败: {ex}")
 
@@ -1721,20 +1833,24 @@ class MainForm:
         try:
             from set_document_format import SetDocumentFormat
 
+            self._set_status("正在转换：读取各章节标题的现有格式…")
             # 1. 解析"不变更"的字体/字号为当前目标段落的实际值，
             #    返回被临时改写、结束后需恢复为"不变更"的下拉框索引
             restored_fonts, restored_sizes = self._resolve_level_title_font_and_size()
 
             # 2. 按"变更各章节标题格式"组的各项设置执行格式设置逻辑
             set_doc_format = SetDocumentFormat(doc=self.work_doc)
+            self._set_status("正在变更各章节标题格式…")
             self._set_level_title_styles(set_doc_format)
 
             # 3. 执行转自动序号
+            self._set_status("正在将手动序号转换为自动序号…")
             converted = AutoNumbering(self.work_doc).convert_all()
-            self.status_bar.config(text=f"已转换 {converted} 个标题为自动序号")
+            self._set_status(f"已转换 {converted} 个标题为自动序号")
             if converted == 0:
                 messagebox.showinfo("提示", "未找到需要转换的手动序号标题")
         except Exception as ex:
+            self._set_status(f"转换失败: {ex}")
             messagebox.showerror("错误", f"转换失败: {ex}")
         finally:
             # 恢复被临时改写的"不变更"下拉框，避免污染界面设置
@@ -1767,6 +1883,11 @@ class MainForm:
             para_count = self.work_doc.Paragraphs.Count
             for i in range(1, para_count + 1):
                 try:
+                    # 首段是文章总标题，不参与章节标题的取值：
+                    # 它若带大纲级别，会把总标题的字体字号当成该级的"当前值"
+                    if i == 1:
+                        continue
+
                     para = self.work_doc.Paragraphs(i)
                     level = para.OutlineLevel
                     if level < 1 or level > 5:

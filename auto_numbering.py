@@ -982,6 +982,8 @@ class AutoNumbering:
     def convert_all(self):
         """遍历文档所有标题段落（大纲级别1~9），将手动序号转为自动编号。
 
+        首段（文章总标题）除外：它由 set_main_title_format 单独负责。
+
         对每个标题段落：
           1. 调用 detect_number_prefix() 检测手动序号
           2. 使用Range.Delete删除序号前缀文本
@@ -1003,6 +1005,12 @@ class AutoNumbering:
 
         for i in range(1, para_count + 1):
             try:
+                # 首段是文章总标题，不属于章节标题：不参与序号转换。
+                # 它若带大纲级别，会被当成一级标题删掉"总标题"文字前面的
+                # 序号并套上自动编号。
+                if i == 1:
+                    continue
+
                 para = self.work_doc.Paragraphs(i)
 
                 # 只处理大纲级别1~9的段落，无论其样式名是否为"标题X"
