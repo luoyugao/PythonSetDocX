@@ -19,6 +19,12 @@ _ALIGNMENT_MAP = {
     "分散对齐": wc.wdAlignParagraphDistribute,
 }
 
+# 纸张尺寸比较容差（磅）。Word 里 PageWidth / PageHeight 是浮点数，
+# 换算与内部舍入会留下零点几磅的误差，用严格相等判断会把"已经摆正"的
+# 页面误判成"还需要交换宽高"，从而反复改写页面尺寸。
+_ORIENTATION_SIZE_TOLERANCE = 0.5
+
+
 # 总标题（文档首段）的段间距：段前0磅、段后28磅。
 # 用固定磅值而非"行"：总标题的字号可能被改成二号/三号，按行折算会让
 # 段后间距随字号变化，得不到稳定的28磅。
@@ -210,6 +216,118 @@ class SetDocumentFormat:
         except:
             pass
     
+    def set_page_orientation(self, is_portrait_orientation=True, progress=None):
+        """按"纵向 / 横向"设置文档纸张方向，并同步交换纸张宽高。
+
+        界面上"变更纸张方向"之前只是把选择存进了设置文件，没有任何一处
+        真正改文档，因此选"横向"文档仍是纵向。这里补上落地实现。
+
+        处理范围是文档的**所有节**：界面上只有"纵向 / 横向"两个选项，
+        没有"只改本节"的入口，若只改第一节，带多个分节符的文档会变成
+        横向、纵向混排，与用户的预期不符。
+
+        为什么设置 Orientation 之后还要显式写 PageWidth / PageHeight：
+
+        1) Word 的 Orientation 置位时**通常**会自行交换纸张宽高，但这依赖
+           当前的纸张尺寸与"方向"自洽。中文文档常见的自定义纸张、或宽高
+           曾以厘米手工设定过的纸张，置位后可能只换方向、不换宽高，页面
+           于是显示成"横向的纵向纸"（文字仍按纵向排）。显式交换可兜住
+           这种情况。
+        2) 交换按节独立进行：各节纸张尺寸可能不同，用统一数值写回会毁掉
+           非标准纸张的尺寸。
+        3) 宽高比较带容差、相等时直接跳过写入。反复写同一尺寸会让 Word
+           重排页面、并把"页面设置"对话框里的数值改写成换算后的非整数值。
+
+        页面网格（每行字符数 / 每页行数）一并清零：文档网格会把版面钉在
+        固定字符数与行数上，换了方向不清零，宽度变大后栏数、字号仍受旧
+        网格约束，看上去"方向变了、版面没变"。
+
+        Args:
+            is_portrait_orientation: True 为纵向，False 为横向
+            progress: 可选回调 f(message)，用于向状态栏上报进度
+
+        Returns:
+            bool: True 表示至少有一节完成设置；False 表示没有可处理的文档。
+        """
+        if self.work_doc is None:
+            print("没有找到目标Word文档。")
+            return False
+
+        report = _make_progress(progress, 1)
+
+        target_orientation = (wc.wdOrientPortrait if is_portrait_orientation
+                              else wc.wdOrientLandscape)
+        # 横向的纸张宽 > 高，纵向反之。以"宽高谁大"作为方向是否已经摆正的
+        # 判据——只比较 Orientation 属性不可靠，属性与实际宽高可能不一致。
+        want_wide = not is_portrait_orientation
+        orientation_name = "纵向" if is_portrait_orientation else "横向"
+
+        try:
+            section_total = int(self.work_doc.Sections.Count)
+        except Exception:
+            section_total = 0
+
+        changed_sections = 0
+        for index in range(1, section_total + 1):
+            report(f"正在将纸张方向设为{orientation_name}… {index}/{section_total}")
+            try:
+                ps = self.work_doc.Sections(index).PageSetup
+
+                try:
+                    ps.Orientation = target_orientation
+                except Exception as ex:
+                    print(f"Section {index}: 设置纸张方向失败 - {ex}")
+                    continue
+
+                # 置位 Orientation 后宽高可能已被 Word 换过，必须重新读取
+                width = height = None
+                try:
+                    width = float(ps.PageWidth)
+                    height = float(ps.PageHeight)
+                except Exception:
+                    pass
+
+                if width is None or height is None or width <= 0 or height <= 0:
+                    changed_sections += 1
+                    continue
+
+                # 宽高方向已与目标一致就不写：写入相同数值会让 Word 重排，
+                # 并把纸张尺寸舍入成非整数（页面设置里能看到 21.01 厘米这种值）。
+                if want_wide != (width > height):
+                    width, height = height, width
+
+                if abs(float(ps.PageWidth) - width) > _ORIENTATION_SIZE_TOLERANCE:
+                    ps.PageWidth = width
+                if abs(float(ps.PageHeight) - height) > _ORIENTATION_SIZE_TOLERANCE:
+                    ps.PageHeight = height
+
+                # 清网格：先清"每行字符数"，再清"每页行数"。顺序与既有
+                # set_page_margins 一致，字符数归零后行数归零才不会互相回填。
+                try:
+                    ps.CharsPerLine = 0
+                    ps.LinesPage = 0
+                except Exception:
+                    pass
+
+                changed_sections += 1
+            except Exception as ex:
+                print(f"Section {index}: 设置纸张方向失败 - {ex}")
+
+        # 重排 + 切到页面视图：让用户立刻看到纸张方向的变化。
+        # 工具是外部进程通过 COM 操作 Word，写入 PageSetup 后 Word 会自行
+        # 重绘，但草稿视图 / 大纲视图下页面边框本身不显示，换了方向也看不出来。
+        try:
+            self.work_doc.Repaginate()
+        except Exception:
+            pass
+
+        try:
+            self.work_doc.ActiveWindow.View.Type = wc.wdPrintView
+        except Exception:
+            pass
+
+        return changed_sections > 0
+
     def set_standard_line_spacing(self, progress=None):
         """把所有正文段落设为1.5倍行距、段前段后0磅。
 

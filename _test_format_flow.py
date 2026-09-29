@@ -64,6 +64,13 @@ class FakeSetDocumentFormat:
     def set_page_margins(self, *args):
         self._record("set_page_margins")
 
+    def set_page_orientation(self, is_portrait_orientation=True, progress=None):
+        self._record("set_page_orientation",
+                     is_portrait=is_portrait_orientation, progress=progress)
+        assert callable(progress), "set_page_orientation 未收到可调用的 progress"
+        progress("正在将纸张方向设为横向… 1/1")
+        return True
+
     def set_main_title_format(self, font, font_size, is_bold, progress=None):
         self._record("set_main_title_format", progress=progress)
         assert callable(progress)
@@ -175,6 +182,8 @@ def build_form(table_only):
 
     # 勾选需要走到的各步骤
     app.chk_change_content_format.set(True)
+    app.chk_change_page_orientation.set(True)
+    app.radio_page_portrait.set(False)      # 横向：本测试要验证的就是"横向"能落地
     app.chk_change_page_margin.set(True)
     app.chk_add_page_num.set(True)
     app.chk_change_main_title_format.set(True)
@@ -229,7 +238,8 @@ def main():
     assert names[2] == "set_content_style", names
 
     # ---- 断言 2：每一步都走到了 ----
-    for expected in ("set_page_margins", "add_page_numbers_custom",
+    for expected in ("set_page_orientation", "set_page_margins",
+                     "add_page_numbers_custom",
                      "set_main_title_format", "set_images_and_tables",
                      "add_image_border", "center_all_images",
                      "set_tables_auto_adjust_and_align",
@@ -237,6 +247,15 @@ def main():
                      "set_table_paragraph_no_indent",
                      "set_table_surrounding_spacing"):
         assert expected in names, f"缺少步骤 {expected}：{names}"
+
+    # ---- 断言 2b：纸张方向收到的是界面上选的"横向"，且排在页面边距之前 ----
+    orientation_calls = [kw for n, kw in FakeSetDocumentFormat.calls
+                         if n == "set_page_orientation"]
+    assert orientation_calls, f"未调用 set_page_orientation：{names}"
+    assert orientation_calls[0].get("is_portrait") is False, \
+        f"选「横向」应传 is_portrait=False：{orientation_calls[0]}"
+    assert names.index("set_page_orientation") < names.index("set_page_margins"), \
+        f"纸张方向应在页面边距之前：{names}"
 
     # ---- 断言 3：收尾步骤在正文/标题之后 ----
     assert names.index("set_table_paragraph_no_indent") > \
@@ -248,6 +267,7 @@ def main():
     # snapshot/restore_protected_paragraph_format 与 set_page_margins、
     # add_page_numbers_custom 不承担细粒度进度上报，不在检查范围内。
     must_report = ("set_content_format", "set_content_style",
+                   "set_page_orientation",
                    "set_main_title_format", "set_images_and_tables",
                    "add_image_border", "center_all_images",
                    "set_tables_auto_adjust_and_align",

@@ -17,7 +17,8 @@ TARGETS = ("main_form.py", "event_handlers.py", "set_document_format.py")
 # 需要 progress 回调的 SetDocumentFormat 方法（自 set_document_format.py 解析）
 # 以及从其它模块调用的方法名 -> 是否必须接受 progress
 SETTER_NAMES = {
-    "set_page_margins", "set_standard_line_spacing", "set_content_format",
+    "set_page_margins", "set_page_orientation", "set_standard_line_spacing",
+    "set_content_format",
     "set_content_style", "snapshot_protected_paragraph_format",
     "restore_protected_paragraph_format", "set_main_title_format",
     "set_title_styles", "set_toc_line_spacing", "set_images_and_tables",

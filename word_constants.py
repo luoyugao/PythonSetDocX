@@ -21,6 +21,11 @@ wdNoProtection = 0
 
 wdStatisticPages = 2
 
+# 纸张方向（WdOrientation）与视图类型
+wdOrientPortrait = 0
+wdOrientLandscape = 1
+wdPrintView = 3
+
 wdLineSpaceSingle = 0
 wdLineSpace1pt5 = 1
 wdLineSpaceDouble = 2

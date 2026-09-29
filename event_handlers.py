@@ -157,6 +157,16 @@ class EventHandlers:
                 set_doc_format.restore_protected_paragraph_format(
                     protected_format_snapshot)
 
+        # 纸张方向必须在页面边距之前：两者都会改 PageSetup，方向置位时 Word
+        # 可能顺带调整页面尺寸与网格，先定方向再定边距，边距值才不会被连带改写。
+        if self.main_form.chk_change_page_orientation.get():
+            is_portrait = self.main_form.radio_page_portrait.get()
+            self.main_form._set_status(
+                "正在将纸张方向设为纵向…" if is_portrait else "正在将纸张方向设为横向…")
+            set_doc_format.set_page_orientation(
+                is_portrait,
+                progress=self._make_status_reporter("纸张方向", 1))
+
         if self.main_form.chk_change_page_margin.get():
             self.main_form._set_status("正在变更页面边距…")
             set_doc_format.set_page_margins(
