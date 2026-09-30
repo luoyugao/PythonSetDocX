@@ -101,7 +101,7 @@ def selftest():
             del app
         finally:
             root.destroy()
-        expected = "文档格式设置程序060921"
+        expected = "文档格式设置程序060929"
         if title == expected:
             lines.append(f"PASS  窗口标题正确: {title}")
         else:
@@ -160,6 +160,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] in ("--selftest", "-selftest"):
         sys.exit(selftest())
     if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-v"):
-        print("文档格式设置程序060921")
+        print("文档格式设置程序060929")
         sys.exit(0)
     main()

@@ -232,16 +232,27 @@ class EventHandlers:
                 progress=self._make_status_reporter("表格段落缩进", 5))
     
     def select_active_doc_button_click(self):
+        from tkinter import messagebox
+        from universal import Universal, describe_no_word_app
+
+        # 这里原来是裸 except：连不上 Word 和"Word 里没打开文档"报的是同一句话，
+        # 真正的失败原因（例如进程被同步盘沙箱关住）全被吞掉了。现在分开报。
+        uni = Universal()
+        dpm.word_app = uni.get_active_word_app()
+        if dpm.word_app is None:
+            messagebox.showwarning("警告", describe_no_word_app(uni.last_error))
+            return
+
         try:
-            from universal import Universal
-            
-            dpm.word_app = Universal().get_active_word_app()
             dpm.work_doc = dpm.word_app.ActiveDocument
-            self.main_form._set_full_filename(dpm.work_doc.FullName)
-        except:
-            import tkinter as tk
-            from tkinter import messagebox
-            messagebox.showwarning("警告", "请先打开一个文档")
+        except Exception as ex:
+            messagebox.showwarning(
+                "警告",
+                f"已连接到 Word/WPS，但没能取到当前文档：\n{ex}\n\n"
+                "请先在 Word/WPS 里打开要处理的文档。")
+            return
+
+        self.main_form._set_full_filename(dpm.work_doc.FullName)
     
     def save_and_close_button_click(self, event=None):
         import tkinter as tk

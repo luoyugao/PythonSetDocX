@@ -7,7 +7,7 @@ import tkinter as tk
 import tkinter.font
 from tkinter import ttk, filedialog, messagebox
 import doc_parameters_manager as dpm
-from universal import Universal
+from universal import Universal, describe_no_word_app
 from word_constants import (set_range_style, get_range_style,
                             get_effective_font_size, get_effective_font_names,
                             apply_font_size, apply_font_names,
@@ -201,8 +201,8 @@ class MainForm:
     def __init__(self, root):
         """初始化主窗体"""
         self.root = root
-        # 设置窗口标题为"文档格式设置程序060921"
-        self.root.title("文档格式设置程序060921")
+        # 设置窗口标题为"文档格式设置程序060929"
+        self.root.title("文档格式设置程序060929")
         # 设置窗口与任务栏图标（开发运行时与源码同目录，打包后由 exe 释放到临时目录）
         try:
             self.root.iconbitmap(resource_path("app.ico"))
@@ -1191,10 +1191,11 @@ class MainForm:
         """调整文档格式：以Word当前激活的文档为目标，按界面参数调整格式"""
         # 确保Word应用已连接
         if self.word_app is None:
-            self.word_app = Universal().get_active_word_app()
-        if self.word_app is None:
-            messagebox.showwarning("警告", "未找到正在运行的Word应用")
-            return
+            uni = Universal()
+            self.word_app = uni.get_active_word_app()
+            if self.word_app is None:
+                messagebox.showwarning("警告", describe_no_word_app(uni.last_error))
+                return
         
         try:
             self._set_status("正在调整文档格式…")

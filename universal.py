@@ -15,6 +15,7 @@ class Universal:
     def __init__(self):
         self.active_word_app = None
         self._disposed = False
+        self.last_error = ""
 
     @property
     def active_word_app(self):
@@ -29,7 +30,15 @@ class Universal:
 
         先尝试连接已运行的实例（按 _WORD_PROG_IDS 顺序），
         如果需要且未找到运行实例，则尝试创建新实例。
+
+        连不上时，每个 ProgID 的失败原因会汇总进 self.last_error ——
+        界面要靠它告诉用户真正的原因，而不是笼统地报一句
+        「请先打开一个文档」。程序运行在云同步目录里时同步客户端会把
+        进程关进沙箱，沙箱内看不到桌面会话里的 Word/WPS，
+        self.last_error 就是唯一能区分这种情况的证据。
         """
+        self.last_error = ""
+        reasons = []
         try:
             pythoncom.CoInitialize()
 
@@ -40,7 +49,8 @@ class Universal:
                     if self._active_word_app is not None:
                         print(f"已连接到: {prog_id}")
                         return self._active_word_app
-                except Exception:
+                except Exception as ex:
+                    reasons.append(f"{prog_id}: {ex}")
                     continue
 
             # 没有运行实例，尝试创建新实例
@@ -51,11 +61,36 @@ class Universal:
                         self._active_word_app.Visible = True
                         print(f"已创建新实例: {prog_id}")
                         return self._active_word_app
-                    except Exception:
+                    except Exception as ex:
+                        reasons.append(f"新建 {prog_id}: {ex}")
                         continue
 
             print("未找到任何可用的 Word/WPS 文字处理应用实例")
+            self.last_error = "；".join(reasons)
             return None
         except Exception as ex:
+            self.last_error = str(ex)
             print(f"获取Word/WPS实例失败: {ex}")
             return None
+
+
+def _sandbox_hint():
+    return (
+        "如果程序是从云同步盘（如 360 安全云盘同步版）的目录里直接双击 exe 运行的，"
+        "请改成双击同一个目录下的「启动程序.cmd」。同步客户端会把同步目录里的 exe "
+        "放进受限沙箱里运行，沙箱内的程序看不到已经打开的 Word/WPS，也写不了文件。"
+    )
+
+
+def describe_no_word_app(reason=""):
+    """连接不到 Word/WPS 时给最终用户看的说明（含失败原因与沙箱提示）。"""
+    lines = ["没有找到正在运行的 Word / WPS。"]
+    if reason:
+        lines += ["", "失败原因：", reason[:400]]
+    lines += [
+        "",
+        "请确认：",
+        "1. 这台电脑已安装 Microsoft Word 或 WPS 文字，并且已经打开要处理的文档；",
+        "2. " + _sandbox_hint(),
+    ]
+    return "\n".join(lines)

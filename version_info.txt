@@ -18,12 +18,12 @@ VSVersionInfo(
         StringTable(
           u'080404B0',
           [StringStruct(u'CompanyName', u'文档格式设置程序'),
-           StringStruct(u'FileDescription', u'文档格式设置程序060921'),
+           StringStruct(u'FileDescription', u'文档格式设置程序060929'),
            StringStruct(u'FileVersion', u'1.0.0.0'),
            StringStruct(u'InternalName', u'DocFormatTool'),
            StringStruct(u'LegalCopyright', u''),
            StringStruct(u'OriginalFilename', u'DocFormatTool.exe'),
-           StringStruct(u'ProductName', u'文档格式设置程序060921'),
+           StringStruct(u'ProductName', u'文档格式设置程序060929'),
            StringStruct(u'ProductVersion', u'1.0.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [2052, 1200])])
