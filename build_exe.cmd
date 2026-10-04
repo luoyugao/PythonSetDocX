@@ -38,7 +38,7 @@ if errorlevel 1 goto :venv_python
 
 uv venv --python 3.12 "%VENV%"
 if errorlevel 1 goto :fail
-uv pip install --python "%PY%" pyinstaller pywin32
+uv pip install --python "%PY%" pyinstaller pywin32 pillow
 if errorlevel 1 goto :fail
 goto :have_env
 
@@ -58,13 +58,13 @@ if errorlevel 1 goto :fail
 
 :venv_deps
 "%PY%" -m pip install --upgrade pip
-"%PY%" -m pip install pyinstaller pywin32
+"%PY%" -m pip install pyinstaller pywin32 pillow
 if errorlevel 1 goto :fail
 
 :have_env
 echo [1/4] Build environment ready: %VENV%
 echo [2/4] Checking dependencies ...
-"%PY%" -c "import PyInstaller, win32com.client" || goto :fail
+"%PY%" -c "import PyInstaller, win32com.client, PIL" || goto :fail
 
 rem Guard against a silent no-op build (see the sandbox note above).
 rem Record the current time, then require the EXE to be newer than it.
