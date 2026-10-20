@@ -282,16 +282,25 @@ def apply_indents_pinned(range_obj, indents):
 def clear_indents(range_obj):
     """把 Range 所在段落的缩进属性全部清零（直接格式）。
 
-    用于"图片段落必须不缩进"：只把 FirstLineIndent 置 0 是不够的——
+    用于"图片段落必须不缩进"与"总标题（首段）必须无缩进"：只把
+    FirstLineIndent 置 0 是不够的——
       - "悬挂缩进"在 Word 里是 LeftIndent>0 且 FirstLineIndent<0，
-        只清首行负值会剩下一段左缩进，图片看上去依然被顶偏；
+        只清首行负值会剩下一段左缩进，图片/标题看上去依然被顶偏；
       - 中文文档的"缩进2字符"存在字符单位属性里，点值清零并不能
         保证字符单位值同步归零（二者是独立的两个属性）。
-    因此 6 个缩进属性成对清零，先点值后字符单位值。
+    因此 6 个缩进属性成对清零。
+
+    **清零顺序：先字符单位值、后点值**（与 apply_indents_pinned 相同）。
+    Word 把"字符单位值 = 0"视为未设置直接格式：若它最后写，段落会退回
+    继承样式的缩进。总标题（首段）套用的 MainTitle 基于「正文」样式，
+    当"变更正文格式"未勾选时，「正文」样式不会被改写、仍是"首行缩进
+    2 字符"，字符单位值最后写就会把总标题刚写好的直接 0 冲掉——首段
+    于是又缩进 2 字符，居中显示也跟着整体偏右。点值放在最后写，0 才
+    真正以直接格式钉住。
 
     与 apply_indents 相反，这里是"无条件写 0"，不做取值有效性判断。
     """
-    for attr in _INDENT_ATTRS:
+    for attr in _CHAR_UNIT_INDENT_ATTRS + _POINT_INDENT_ATTRS:
         try:
             setattr(range_obj.ParagraphFormat, attr, 0)
         except Exception:

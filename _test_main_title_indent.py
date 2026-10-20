@@ -14,6 +14,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from set_document_format import SetDocumentFormat  # noqa: E402
+from word_constants import (  # noqa: E402
+    clear_indents, _CHAR_UNIT_INDENT_ATTRS, _POINT_INDENT_ATTRS)
 
 _INDENT_ATTRS = ('LeftIndent', 'RightIndent', 'FirstLineIndent',
                  'CharacterUnitLeftIndent', 'CharacterUnitRightIndent',
@@ -38,6 +40,50 @@ class FakeParagraphFormat:
         if name in _INDENT_ATTRS:
             self._values[name] = value
             self.writes.append((name, value))
+            return
+        object.__setattr__(self, name, value)
+
+
+class InheritingParagraphFormat(FakeParagraphFormat):
+    """模拟 Word 的一条实测规则：**字符单位值 = 0 视为"未设置直接格式"**。
+
+    「正文」样式带着"首行缩进2字符"，首段自己没有直接缩进。若先写点值 0、
+    再写字符单位 0，Word 会把刚写好的直接 0 当成"未设置"，段落退回继承
+    「正文」的 2 字符缩进——总标题于是又缩进了，居中显示也跟着偏右。
+    只有把点值 0 放在最后写，直接 0 才钉得住。
+    """
+
+    def __init__(self, inherited_first_line=2 * 0.35 * 28.35):
+        object.__setattr__(self, '_values', {})
+        object.__setattr__(self, 'writes', [])
+        object.__setattr__(self, '_inherited_first_line', inherited_first_line)
+
+    def __getattr__(self, name):
+        values = object.__getattribute__(self, '_values')
+        if name == 'FirstLineIndent':
+            if name in values:
+                return values[name]
+            # 没有直接格式 -> 继承「正文」的 2 字符缩进
+            return object.__getattribute__(self, '_inherited_first_line')
+        if name == 'CharacterUnitFirstLineIndent':
+            if 'FirstLineIndent' in values:
+                return 0.0
+            return 2.0
+        if name in _INDENT_ATTRS:
+            return values.get(name, 0.0)
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name in _INDENT_ATTRS:
+            values = object.__getattribute__(self, '_values')
+            values[name] = value
+            self.writes.append((name, value))
+            if name.startswith('CharacterUnit') and value == 0:
+                # Word 把"字符单位值=0"当成未设置直接格式，连带抹掉点值直接格式
+                values.pop('FirstLineIndent', None)
+                values.pop('LeftIndent', None)
+            if name == 'FirstLineIndent' and value == 0:
+                values['CharacterUnitFirstLineIndent'] = 0
             return
         object.__setattr__(self, name, value)
 
@@ -175,9 +221,69 @@ def test_center_and_spacing_applied():
     print("PASS 首段居中、段前0磅、段后28磅正常应用")
 
 
+def test_clear_indents_char_unit_first_point_last():
+    """缩进清零必须"先字符单位、后点值"：字符单位 0 最后写会被 Word 忽略。"""
+    fmt = FakeParagraphFormat()
+    clear_indents(FakeRange(paragraph_format=fmt))
+    order = [name for name, _ in fmt.writes]
+    assert order == list(_CHAR_UNIT_INDENT_ATTRS + _POINT_INDENT_ATTRS), \
+        f"缩进清零的写入顺序不对：{order}"
+    print("PASS 缩进清零按\"先字符单位、后点值\"执行")
+
+
+def test_no_indent_wins_over_inherited_body_style():
+    """"变更正文格式"未勾选时「正文」仍是首行缩进2字符，首段必须仍无缩进。"""
+    fmt = InheritingParagraphFormat()
+    para = FakeParagraph(paragraph_format=fmt)
+    doc = FakeDocument(para)
+    make_formatter(doc).set_main_title_format("黑体", "二号", True)
+
+    assert abs(fmt.FirstLineIndent) < 0.01, \
+        f"首段仍继承到首行缩进：{fmt.FirstLineIndent}"
+    assert abs(fmt.CharacterUnitFirstLineIndent) < 0.01, \
+        f"首段的字符单位首行缩进未清零：{fmt.CharacterUnitFirstLineIndent}"
+    assert para.Alignment == 1, f"首段未水平居中：{para.Alignment}"
+    print("PASS 父样式带\"首行缩进2字符\"时，首段仍无缩进且水平居中")
+
+
+def test_layout_only_keeps_font_size_and_spacing():
+    """总标题组未勾选时：只强制居中+无缩进，字体/字号/段距保持原样。"""
+    font = FakeFont(name="仿宋", size=22.0)
+    fmt = InheritingParagraphFormat()
+    para = FakeParagraph(font=font, paragraph_format=fmt)
+    para.Alignment = 0            # 原来是左对齐
+    para.SpaceBefore = 12.0       # 作者自己定的段前段后
+    para.SpaceAfter = 6.0
+    doc = FakeDocument(para)
+
+    assert make_formatter(doc).set_main_title_layout() is True
+    assert para.Alignment == 1, f"首段未强制居中：{para.Alignment}"
+    assert abs(fmt.FirstLineIndent) < 0.01, \
+        f"首段首行缩进未清零：{fmt.FirstLineIndent}"
+    assert abs(fmt.CharacterUnitFirstLineIndent) < 0.01, \
+        f"首段字符单位首行缩进未清零：{fmt.CharacterUnitFirstLineIndent}"
+    assert font.Name == "仿宋" and font.Size == 22.0, \
+        f"字体字号被改动：{font.Name} / {font.Size}"
+    assert para.SpaceBefore == 12.0 and para.SpaceAfter == 6.0, \
+        f"段前段后被改动：{para.SpaceBefore} / {para.SpaceAfter}"
+    print("PASS 总标题组未勾选时：首行强制居中、无缩进，字体字号与段距保持原样")
+
+
+def test_layout_without_document_returns_false():
+    """没有文档时只返回 False，不抛异常。"""
+    formatter = SetDocumentFormat.__new__(SetDocumentFormat)
+    formatter.work_doc = None
+    assert formatter.set_main_title_layout() is False
+    print("PASS 无文档时 set_main_title_layout 安全返回 False")
+
+
 if __name__ == "__main__":
     test_hanging_indent_cleared()
     test_first_line_indent_2chars_cleared()
     test_keep_font_and_size_still_clears_indent()
     test_center_and_spacing_applied()
+    test_clear_indents_char_unit_first_point_last()
+    test_no_indent_wins_over_inherited_body_style()
+    test_layout_only_keeps_font_size_and_spacing()
+    test_layout_without_document_returns_false()
     print("\n全部通过")

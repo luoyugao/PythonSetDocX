@@ -113,7 +113,10 @@ def selftest():
 
     # ---- 5) Word/WPS 可用性（非致命，仅提示） ----
     try:
-        from universal import Universal
+        from universal import Universal, is_restricted_run
+        if is_restricted_run():
+            lines.append("WARN  当前进程受同步客户端限制（典型情况：直接双击了同步目录里的"
+                         " exe），连不上 Word/WPS，请改用同目录的「启动程序.cmd」")
         app_obj = Universal().get_active_word_app()
         if app_obj is not None:
             lines.append("INFO  已检测到运行中的 Word/WPS，可执行格式调整")
@@ -146,12 +149,20 @@ def selftest():
 
 def main():
     dpm.load_settings()
-    
+
     root = tk.Tk()
-    
+
     from main_form import MainForm
     app = MainForm(root)
-    
+
+    # 被云同步客户端限制运行时（典型情况：直接双击同步目录里的 exe），
+    # 无论点哪个按钮都连不上 Word/WPS，这里一启动就把真正的原因和办法说清楚。
+    from universal import is_restricted_run, restricted_run_message
+    if is_restricted_run():
+        from tkinter import messagebox
+        root.update_idletasks()
+        messagebox.showwarning("运行方式需要调整", restricted_run_message(), parent=root)
+
     root.mainloop()
 
 

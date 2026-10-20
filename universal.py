@@ -74,6 +74,101 @@ class Universal:
             return None
 
 
+def _integrity_rid():
+    """本进程令牌的完整性级别 RID（0x0=Untrusted、0x1000=Low、0x2000=Medium…）。
+
+    查询失败返回 None。
+    """
+    import ctypes
+    from ctypes import wintypes
+    adv, k32 = ctypes.windll.advapi32, ctypes.windll.kernel32
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    adv.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                     ctypes.POINTER(wintypes.HANDLE)]
+    adv.OpenProcessToken.restype = wintypes.BOOL
+    adv.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                        ctypes.c_void_p, wintypes.DWORD,
+                                        ctypes.POINTER(wintypes.DWORD)]
+    adv.GetTokenInformation.restype = wintypes.BOOL
+    adv.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
+    adv.GetSidSubAuthorityCount.restype = ctypes.c_void_p
+    adv.GetSidSubAuthority.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    adv.GetSidSubAuthority.restype = ctypes.c_void_p
+
+    handle = wintypes.HANDLE()
+    if not adv.OpenProcessToken(k32.GetCurrentProcess(), 0x0008,
+                                ctypes.byref(handle)):
+        return None
+    try:
+        need = wintypes.DWORD(0)
+        adv.GetTokenInformation(handle, 25, None, 0, ctypes.byref(need))  # 25=TokenIntegrityLevel
+        buf = ctypes.create_string_buffer(need.value)
+        if not adv.GetTokenInformation(handle, 25, buf, need.value,
+                                       ctypes.byref(need)):
+            return None
+        sid = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+        count = ctypes.cast(adv.GetSidSubAuthorityCount(sid),
+                            ctypes.POINTER(ctypes.c_ubyte))[0]
+        last = adv.GetSidSubAuthority(sid, count - 1)
+        return ctypes.cast(last, ctypes.POINTER(wintypes.DWORD))[0]
+    except Exception:
+        return None
+    finally:
+        k32.CloseHandle(handle)
+
+
+def is_restricted_run():
+    """当前进程是不是被云同步客户端降权运行了？
+
+    实测：从云同步盘（如 360 安全云盘同步版）目录里直接启动的 exe，
+    进程令牌的完整性级别会被降成 Low —— 低完整性级别的进程受系统隔离限制：
+    看不到中完整性进程（Word/WPS）的运行对象表，也写不了同步目录以外的文件。
+    这个降级会传给它的所有子进程，进程内没有任何痕迹，程序自己救不回来，
+    只能提示用户改用同目录的「启动程序.cmd」。
+
+    查完整性级别是首选判据；查不到时退回到「能不能写系统临时目录」。
+    """
+    import os
+    rid = _integrity_rid()
+    if rid is not None and rid <= 0x1000:      # Untrusted(0) / Low(0x1000)
+        return True
+
+    # 兜底：往系统临时目录写个文件。
+    # 注意不能用 tempfile.gettempdir()——它在 %TEMP% 写不进去时会
+    # 回退到当前目录，于是永远"成功"，反而漏判。
+    temp = os.environ.get("TEMP") or os.environ.get("TMP")
+    if not temp:
+        return False
+    probe = os.path.join(temp, "DocFormatTool_write_probe.tmp")
+    try:
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        os.remove(probe)
+        return False
+    except Exception:
+        return True
+
+
+def restricted_run_message():
+    """受限运行时给用户的完整解决办法。"""
+    return (
+        "程序现在是从云同步盘的目录里直接运行的。同步客户端会把同步目录里\n"
+        "启动的程序降成「低完整性级别」运行，这种进程受 Windows 隔离限制：\n"
+        "\n"
+        "    · 看不到你已经打开的 Word / WPS，所以「选取当前文档」必然失败；\n"
+        "    · 也写不了同步目录以外的文件。\n"
+        "\n"
+        "这个降级会传给程序启动的所有子进程，程序自己解不开。请这样做：\n"
+        "\n"
+        "1. 关掉本窗口；\n"
+        "2. 到程序所在的文件夹里，双击「启动程序.cmd」（不是 exe）；\n"
+        "   它会把程序复制到系统目录后再启动，功能完全正常。\n"
+        "\n"
+        "以后建快捷方式（包括在别的电脑上），请让快捷方式指向「启动程序.cmd」，\n"
+        "不要指向 DocFormatTool.exe。"
+    )
+
+
 def _sandbox_hint():
     return (
         "如果程序是从云同步盘（如 360 安全云盘同步版）的目录里直接双击 exe 运行的，"
@@ -84,13 +179,19 @@ def _sandbox_hint():
 
 def describe_no_word_app(reason=""):
     """连接不到 Word/WPS 时给最终用户看的说明（含失败原因与沙箱提示）。"""
-    lines = ["没有找到正在运行的 Word / WPS。"]
+    restricted = is_restricted_run()
+    lines = []
+    if restricted:
+        # 受限运行时先说解决办法，别让用户去点「选取当前文档」白费功夫
+        lines += [restricted_run_message(), "", "———", ""]
+    lines.append("没有找到正在运行的 Word / WPS。")
     if reason:
         lines += ["", "失败原因：", reason[:400]]
     lines += [
         "",
         "请确认：",
         "1. 这台电脑已安装 Microsoft Word 或 WPS 文字，并且已经打开要处理的文档；",
-        "2. " + _sandbox_hint(),
     ]
+    if not restricted:
+        lines.append("2. " + _sandbox_hint())
     return "\n".join(lines)

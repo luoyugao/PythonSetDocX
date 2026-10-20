@@ -173,12 +173,15 @@ class EventHandlers:
                 float(self.main_form.top_margin.get()),
                 float(self.main_form.bottom_margin.get()),
                 float(self.main_form.left_margin.get()),
-                float(self.main_form.right_margin.get()))
+                float(self.main_form.right_margin.get()),
+                progress=self._make_status_reporter("页面边距", 1))
         
         if self.main_form.chk_add_page_num.get():
             self.main_form._set_status("正在添加页码…")
             self._add_page_number()
 
+        # 总标题格式独立于"变更正文格式"：即使未勾选正文格式，首行也必须
+        # 水平居中、段首缩进为"无"。
         if self.main_form.chk_change_main_title_format.get():
             self.main_form._set_status("正在设置文章首行总标题格式…")
             # "不变更"必须转成 None：set_main_title_format 以 None 表示该项
@@ -195,6 +198,12 @@ class EventHandlers:
                 main_title_size,
                 self.main_form.chk_main_title_bold.get(),
                 progress=self._make_status_reporter("总标题格式", 1))
+        else:
+            # 未勾选"变更文章首行总标题"：字体/字号/加粗/段间距/样式保持
+            # 原样，但首行仍强制水平居中、段首缩进为"无"。
+            self.main_form._set_status("正在设置首行总标题对齐与缩进…")
+            set_doc_format.set_main_title_layout(
+                progress=self._make_status_reporter("首行对齐", 1))
         
         if self.main_form.chk_change_image_and_table_format.get():
             table_only = self.main_form.chk_table_only.get()
@@ -204,6 +213,7 @@ class EventHandlers:
                 no_indent=self.main_form.chk_image_no_indent.get(),
                 max_width=self.main_form.chk_max_width.get(),
                 table_only=table_only,
+                keep_image_size=self.main_form.chk_keep_image_size.get(),
                 progress=self._make_status_reporter("图片与表格格式", 5))
 
             # 表格统一格式：按内容自动调整后撑满页面宽度，

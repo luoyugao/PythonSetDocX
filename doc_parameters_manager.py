@@ -55,6 +55,7 @@ TableOnly = False
 ImgAutoWidth = True
 ImgAutoHeight = True
 ImageNoIndent = True
+KeepImageSize = False
 ImageNoBorder = True
 WrapAsInline = True
 
@@ -109,7 +110,7 @@ def load_settings():
     global ContentFontSize, CodeFormat, DeleteEmptyLine, SetStandardLineParagraphSpacing
     global ChangeMainTitleFormat, MainTitleFont, MainTitleFontSize, MainTitleBold
     global ChangeTitleLevelFormat, LevelTitleFonts, LevelTitleFontSizes, LevelTitleNumbersStyle, LevelTitleIndents
-    global ChangeImageFormat, ImageNoIndent, TableOnly
+    global ChangeImageFormat, ImageNoIndent, TableOnly, KeepImageSize
     global ChangeOrientation, IsPortrait
     global AddPageNumberEnable
     global CatalogueLevel, UseTitleAsFilename
@@ -165,6 +166,7 @@ def load_settings():
         ChangeImageFormat = settings.get('changeImageFormat', True)
         ImageNoIndent = settings.get('imageNoIndent', True)
         TableOnly = settings.get('tableOnly', False)
+        KeepImageSize = settings.get('keepImageSize', False)
         
         ChangeOrientation = settings.get('changeOrientation', False)
         IsPortrait = settings.get('isPortrait', True)
@@ -215,6 +217,7 @@ def save_settings():
         'changeImageFormat': ChangeImageFormat,
         'imageNoIndent': ImageNoIndent,
         'tableOnly': TableOnly,
+        'keepImageSize': KeepImageSize,
         'changeOrientation': ChangeOrientation,
         'isPortrait': IsPortrait,
         'addPageNumberEnable': AddPageNumberEnable,
@@ -256,7 +259,7 @@ def read_from_form(main_form):
     global ChangeContentFormat, ContentIndent, ContentAlign, ContentFont, ContentFontSize, CodeFormat
     global ChangeMainTitleFormat, MainTitleFont, MainTitleFontSize, MainTitleBold
     global ChangeTitleLevelFormat, LevelTitleFonts, LevelTitleNumbersStyle, LevelTitleIndents
-    global ChangeImageFormat, ImageNoIndent, TableOnly
+    global ChangeImageFormat, ImageNoIndent, TableOnly, KeepImageSize
     global ChangeOrientation, IsPortrait
     global AddPageNumberEnable, CatalogueLevel, UseTitleAsFilename
     
@@ -295,6 +298,7 @@ def read_from_form(main_form):
         ChangeImageFormat = main_form.chk_change_image_and_table_format.get()
         ImageNoIndent = main_form.chk_image_no_indent.get()
         TableOnly = main_form.chk_table_only.get()
+        KeepImageSize = main_form.chk_keep_image_size.get()
         
         ChangeOrientation = main_form.chk_change_page_orientation.get()
         IsPortrait = main_form.radio_page_portrait.get()
@@ -348,6 +352,7 @@ def write_to_form(main_form):
         main_form.chk_change_image_and_table_format.set(ChangeImageFormat)
         main_form.chk_image_no_indent.set(ImageNoIndent)
         main_form.chk_table_only.set(TableOnly)
+        main_form.chk_keep_image_size.set(KeepImageSize)
         
         main_form.chk_change_page_orientation.set(ChangeOrientation)
         main_form.radio_page_portrait.set(IsPortrait)

@@ -181,40 +181,200 @@ class SetDocumentFormat:
             self.work_doc = Universal().get_active_word_app().Documents[full_name]
             self.work_doc.Activate()
     
-    def set_page_margins(self, top, bottom, left, right):
+    # 边距读回校验的容差（磅）。Word / WPS 内部把磅换算成整数 twip，
+    # 写进去的 42.525 磅读回来可能是 42.52 或 42.53，严格相等会把
+    # "已经写对"的节误判成失败。
+    _MARGIN_TOLERANCE = 0.5
+
+    @staticmethod
+    def _ps_get(page_setup, name, default=None):
+        """读一个 PageSetup 属性；该版本没这个属性时返回 default。"""
+        try:
+            return getattr(page_setup, name)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _ps_set(page_setup, name, value):
+        """写一个 PageSetup 属性，成功返回 True。
+
+        每一项都必须独立 try：Word 2007 / 部分 WPS 版本的 PageSetup 没有
+        CharsPerLine、LayoutMode 等属性，写它会抛异常。原来这些写入挤在
+        同一个 try 里，前面一项抛异常，后面的"清网格"就再也执行不到，
+        边距也只剩半套设置。
+        """
+        try:
+            setattr(page_setup, name, value)
+            return True
+        except Exception as ex:
+            print(f"  PageSetup.{name} 写入失败（不影响其它项）：{ex}")
+            return False
+
+    def _margins_of(self, page_setup):
+        return tuple(self._ps_get(page_setup, name) for name in
+                     ("TopMargin", "BottomMargin", "LeftMargin", "RightMargin"))
+
+    def _format_margins(self, page_setup):
+        """把四边边距格式化成 (上, 下, 左, 右) 的日志文本。"""
+        parts = []
+        for value in self._margins_of(page_setup):
+            if isinstance(value, (int, float)):
+                parts.append(f"{float(value):.2f}")
+            else:
+                parts.append(str(value))
+        return "(" + ", ".join(parts) + ")"
+
+    def _margins_match(self, page_setup, expected):
+        """读回的四个边距是否都等于期望值（带容差、取不到值算不匹配）。"""
+        for got, want in zip(self._margins_of(page_setup), expected):
+            if not isinstance(got, (int, float)):
+                return False
+            if abs(float(got) - float(want)) > self._MARGIN_TOLERANCE:
+                return False
+        return True
+
+    def _write_margins(self, page_setup, expected):
+        for name, value in zip(("TopMargin", "BottomMargin",
+                                "LeftMargin", "RightMargin"), expected):
+            self._ps_set(page_setup, name, value)
+
+    def _clear_margin_overrides(self, page_setup):
+        """清掉会反过来改写边距的页面设置项。
+
+        - 镜像边距 / 装订线会把"左右边距"当成内/外边距，实际排版宽度
+          与写入值不一致；
+        - 文档网格（每行字符数、每页行数、版式）会让 Word 在写入边距后
+          按字符网格重新折算正文宽度，把刚写的边距改成按网格取整的值。
+
+        这些必须在写边距**之前**清掉，否则等于先写边距、再让 Word 改回去。
+        """
+        self._ps_set(page_setup, "MirrorMargins", False)
+        self._ps_set(page_setup, "Gutter", 0)
+        self._ps_set(page_setup, "LayoutMode", 0)
+        self._ps_set(page_setup, "CharsPerLine", 0)
+        self._ps_set(page_setup, "LinesPage", 0)
+
+    def _section_page_setup(self, index):
+        try:
+            return self.work_doc.Sections(index).PageSetup
+        except Exception as ex:
+            print(f"Section {index}: 取 PageSetup 失败 - {ex}")
+            return None
+
+    def _refresh_page_layout(self):
+        """重排并强制重画整个窗口。
+
+        COM 改完页面设置后 Word / WPS 往往只重排数据、不重画屏幕：停在
+        当前显示的那一页（通常正是第一页）上，看上去就像"第一页的边距
+        没变"，往下翻页触发重画后才恢复正常。所以除了 Repaginate，
+        还要把视图重设一次并调用 ScreenRefresh 强制刷新。
+        """
+        try:
+            self.work_doc.Repaginate()
+        except Exception as ex:
+            print(f"Repaginate 失败：{ex}")
+
+        try:
+            self.work_doc.ActiveWindow.View.Type = wc.wdPrintView
+        except Exception:
+            pass
+
+        try:
+            self.work_doc.Application.ScreenRefresh()
+        except Exception:
+            pass
+
+    def set_page_margins(self, top, bottom, left, right, progress=None):
+        """把整篇文档（所有节）的页边距设为指定厘米值。
+
+        为什么不能"逐节写一次就完"：
+
+        1) 写入顺序有讲究。镜像边距、装订线、文档网格都会让 Word 在
+           写边距之后重新折算正文宽度，把刚写的值改回旧值。必须先清掉
+           这些项，再写四边边距。
+        2) 写入可能被静默吞掉。Word / WPS 在页面设置对象被缓存的节上
+           会"接受"赋值但文档并没有变（第一节最常见），于是出现
+           "第一页边距没变、其它页正常"。因此每次写完都要读回校验，
+           不一致就再写一遍，仍不一致的节用整篇文档级 PageSetup 兜底。
+        3) 个别属性在旧版本上不存在（Word 2007 / WPS 没有
+           CharsPerLine）。逐项独立 try，不能因为一项失败就跳过其余。
+
+        Args:
+            top / bottom / left / right: 边距，单位厘米
+            progress: 可选回调 f(message)，用于向状态栏上报进度
+
+        Returns:
+            bool: True 表示所有节的边距都确认写入成功；
+                  False 表示没有文档，或个别节确认失败（失败节号会写入
+                  日志并上报给 progress）。
+        """
         if self.work_doc is None:
             print("没有找到目标Word文档。")
-            return
-        
+            return False
+
+        report = _make_progress(progress, 1)
+
         margin_points = 28.35
-        right_margin_points = margin_points * right
-        
-        for i in range(1, self.work_doc.Sections.Count + 1):
-            try:
-                section = self.work_doc.Sections(i)
-                ps = section.PageSetup
-                print(f"Section {i}: RightMargin before = {ps.RightMargin:.2f}")
-                
-                ps.TopMargin = margin_points * top
-                ps.BottomMargin = margin_points * bottom
-                ps.LeftMargin = margin_points * left
-                ps.RightMargin = right_margin_points
-                ps.MirrorMargins = False
-                ps.Gutter = 0
-                ps.CharsPerLine = 0
-                ps.LinesPage = 0
-                ps.LayoutMode = 0
-                
-                print(f"Section {i}: RightMargin after = {ps.RightMargin:.2f} (expected {right_margin_points:.2f})")
-            except Exception as ex:
-                print(f"Section {i}: 设置边距失败 - {ex}")
-        
-        self.work_doc.Repaginate()
-        
+        expected = (margin_points * top, margin_points * bottom,
+                    margin_points * left, margin_points * right)
+
         try:
-            self.work_doc.ActiveWindow.View.Type = 3
-        except:
-            pass
+            section_total = int(self.work_doc.Sections.Count)
+        except Exception as ex:
+            print(f"取节数失败：{ex}")
+            section_total = 0
+
+        unresolved = []
+        for index in range(1, section_total + 1):
+            report(f"正在设置页面边距… {index}/{section_total}")
+            page_setup = self._section_page_setup(index)
+            if page_setup is None:
+                unresolved.append(index)
+                continue
+
+            before = self._format_margins(page_setup)
+            print(f"Section {index}: 边距 before = {before}")
+
+            self._clear_margin_overrides(page_setup)
+            self._write_margins(page_setup, expected)
+
+            # 读回校验：Word 可能按网格把边距改成取整值，或者整节吞掉写入
+            if not self._margins_match(page_setup, expected):
+                self._write_margins(page_setup, expected)
+
+            if self._margins_match(page_setup, expected):
+                print(f"Section {index}: 边距 after = {self._format_margins(page_setup)}")
+            else:
+                unresolved.append(index)
+
+        # 整篇文档级兜底：Document.PageSetup 在 Word / WPS 里都是"整篇生效"，
+        # 对逐节写不进去的节（典型是第一页所在的第一节）往往仍然有效。
+        if unresolved:
+            print(f"以下节的边距没能逐节写入，改用整篇文档级 PageSetup 兜底：{unresolved}")
+            try:
+                doc_page_setup = self.work_doc.PageSetup
+                self._clear_margin_overrides(doc_page_setup)
+                self._write_margins(doc_page_setup, expected)
+            except Exception as ex:
+                print(f"整篇文档级 PageSetup 写入失败：{ex}")
+
+            still = []
+            for index in unresolved:
+                page_setup = self._section_page_setup(index)
+                if page_setup is None or not self._margins_match(page_setup, expected):
+                    still.append(index)
+            unresolved = still
+
+        self._refresh_page_layout()
+
+        if unresolved:
+            message = (f"第 {'、'.join(str(i) for i in unresolved)} 节"
+                       f"的页边距未能确认写入，请在该节上检查页面设置")
+            print(message)
+            report(message)
+            return False
+
+        return True
     
     def set_page_orientation(self, is_portrait_orientation=True, progress=None):
         """按"纵向 / 横向"设置文档纸张方向，并同步交换纸张宽高。
@@ -303,11 +463,10 @@ class SetDocumentFormat:
 
                 # 清网格：先清"每行字符数"，再清"每页行数"。顺序与既有
                 # set_page_margins 一致，字符数归零后行数归零才不会互相回填。
-                try:
-                    ps.CharsPerLine = 0
-                    ps.LinesPage = 0
-                except Exception:
-                    pass
+                # 逐项独立写：Word 2007 / 部分 WPS 版本没有 CharsPerLine，
+                # 它抛异常时不能把后面的 LinesPage 一起跳过。
+                self._ps_set(ps, "CharsPerLine", 0)
+                self._ps_set(ps, "LinesPage", 0)
 
                 changed_sections += 1
             except Exception as ex:
@@ -973,6 +1132,75 @@ class SetDocumentFormat:
             for para, values in zip(paragraphs, saved_values):
                 self._write_paragraph_format(para, values, restore_size=False)
 
+    def _pin_main_title_layout(self, main_para):
+        """把首段的"水平居中 + 无缩进"以直接格式钉住（不改其它格式）。
+
+        只写对齐与 6 个缩进属性；字体、字号、加粗、段间距、段落样式一概
+        不动。供两条路径共用：
+          - "变更文章首行总标题"勾选：set_main_title_format 在写完样式后调用；
+          - 未勾选：set_main_title_layout 直接调用（总标题的字体字号等由
+            作者自己定，但首行仍必须居中、段首缩进必须为无）。
+
+        读回校验的原因：未勾选"变更正文格式"时「正文」样式不会被改写，
+        仍是"首行缩进2字符"；若直接 0 被 Word 当成"未设置"而退回样式继承，
+        首段会重新缩进 2 字符，居中显示也跟着整体偏右。读到非 0 就再钉一次
+        （clear_indents 先写字符单位值、最后写点值，0 才能以直接格式生效），
+        最后再读回一次对齐方式。
+        """
+        try:
+            main_para.Alignment = wc.wdAlignParagraphCenter
+        except Exception:
+            pass
+        clear_indents(main_para.Range)
+
+        try:
+            leftover = get_effective_indents(main_para.Range)
+        except Exception:
+            leftover = {}
+        if any(abs(value) > 0.01 for value in leftover.values()
+               if isinstance(value, (int, float))):
+            clear_indents(main_para.Range)
+            try:
+                main_para.Alignment = wc.wdAlignParagraphCenter
+            except Exception:
+                pass
+
+        try:
+            if main_para.Alignment != wc.wdAlignParagraphCenter:
+                main_para.Alignment = wc.wdAlignParagraphCenter
+        except Exception:
+            pass
+
+    def set_main_title_layout(self, progress=None):
+        """强制首段水平居中、段首缩进为"无"（不改其它格式）。
+
+        用于"变更文章首行总标题"**未勾选**的场合：总标题的字体、字号、
+        加粗、段间距与段落样式都保持作者原样，但首行文字仍必须水平居中，
+        段首缩进方式必须为"无"。只写段落的直接格式，不改样式、不改字号。
+
+        本方法与"变更正文格式"是否勾选无关：未勾选正文格式时「正文」样式
+        可能仍是"首行缩进2字符"，同样要靠这里把首段的缩进钉成 0。
+
+        Args:
+            progress: 可选回调 f(message)，用于向状态栏上报细粒度进度。
+
+        Returns:
+            bool: True 表示已处理；False 表示没有文档或取不到首段。
+        """
+        if self.work_doc is None:
+            return False
+
+        report = _make_progress(progress, 1)
+        report("正在设置首行总标题对齐与缩进…")
+
+        try:
+            main_para = self.work_doc.Paragraphs(1)
+        except Exception:
+            return False
+
+        self._pin_main_title_layout(main_para)
+        return True
+
     def set_main_title_format(self, font, font_size, is_bold, progress=None):
         """设置文章首行总标题的格式。
 
@@ -986,8 +1214,14 @@ class SetDocumentFormat:
             MainTitle 会继承「正文」样式，而「正文」的缩进（如首行缩进
             2字符）后续会被 set_content_style 改写，若不在样式与段落上
             都清零，总标题会莫名多出首行缩进。
+            这一点在**未勾选"变更正文格式"**时尤其要注意：那时「正文」
+            样式不会被改写，仍是"首行缩进2字符"，首段只能靠这里的直接
+            格式把缩进钉成 0；而清零必须**先写字符单位值、最后写点值**，
+            否则 Word 会把字符单位 0 当成"未设置"、首段又退回继承样式，
+            居中显示也跟着整体偏右（见 word_constants.clear_indents）。
+            写完后会读回校验，仍为 0 才认为成功。
           - 加粗、居中、段前0磅、段后28磅属于总标题的固有格式，
-            无论字体字号是否为"不变更"都要执行。
+            无论字体字号是否为"不变更"都要执行；居中最后再读回确认一次。
 
         Args:
             progress: 可选回调 f(message)，用于向状态栏上报细粒度进度。
@@ -1046,10 +1280,10 @@ class SetDocumentFormat:
         set_range_style(main_para.Range, style)
 
         report("正在应用总标题格式（居中、无缩进、段后28磅）…")
-        main_para.Alignment = wc.wdAlignParagraphCenter
-        # 段落原有直接格式优先于样式：缩进与段间距再以直接格式写一遍，
-        # 否则首段自己的首行缩进/段前段后仍会保持旧值。
-        clear_indents(main_para.Range)
+        # 段落原有直接格式优先于样式：居中与缩进以直接格式再写一遍，
+        # 否则首段自己的首行缩进仍会保持旧值。
+        self._pin_main_title_layout(main_para)
+
         try:
             main_para.SpaceBefore = _MAIN_TITLE_SPACE_BEFORE
             main_para.SpaceAfter = _MAIN_TITLE_SPACE_AFTER
@@ -1336,7 +1570,8 @@ class SetDocumentFormat:
             print(f"移除编号时出错: {ex}")
     
     def set_images_and_tables(self, wrap_as_inline=True, no_indent=True,
-                              max_width=True, table_only=False, progress=None):
+                              max_width=True, table_only=False,
+                              keep_image_size=False, progress=None):
         """设置图片与表格的格式。
 
         Args:
@@ -1347,9 +1582,14 @@ class SetDocumentFormat:
                 还会被表格格式快照写成直接格式。流程末尾必须再调一次
                 set_image_paragraph_no_indent() 与
                 set_table_paragraph_no_indent()。
-            max_width: 兼容保留参数。表格宽度已统一由 _auto_adjust_tables()
-                处理（先“根据内容调整表格”，再撑满页面宽度），不再受该参数影响
+            max_width: 是否把图片宽度调整为页面正文宽度（界面"最大宽度"
+                复选框）；为 False 时保持图片原宽度
             table_only: 是否只处理表格，跳过所有图片相关的处理（默认False）
+            keep_image_size: 是否完全不改变图片大小（界面"不改变图片大小"
+                复选框）。为 True 时优先级高于 max_width：图片原宽度、原高度
+                都不动。本方法里唯一会改图片大小的操作就是 max_width 的宽度
+                赋值，因此只要不执行它即可；环绕方式、边框、居中、缩进等
+                与尺寸无关的处理照常进行。
             progress: 可选回调 f(message)，用于向状态栏上报细粒度进度
         """
         if self.work_doc is None:
@@ -1357,9 +1597,13 @@ class SetDocumentFormat:
 
         report = _make_progress(progress, 5)
 
-        # 计算页面正文区域宽度（用于max_width）
+        # 是否允许改图片宽度。"不改变图片大小"勾选时一律不改，即使
+        # "最大宽度"仍处于勾选状态。
+        resize_images = bool(max_width) and not keep_image_size
+
+        # 计算页面正文区域宽度（用于 max_width）
         page_width = None
-        if max_width and not table_only:
+        if resize_images and not table_only:
             try:
                 ps = self.work_doc.PageSetup
                 page_width = ps.PageWidth - ps.LeftMargin - ps.RightMargin
@@ -1394,7 +1638,7 @@ class SetDocumentFormat:
                 report(f"正在处理图片宽度与缩进… {index}/{inline_total}")
                 if inline_shape.Type == wc.wdInlineShapePicture:
                     try:
-                        if max_width and page_width is not None:
+                        if resize_images and page_width is not None:
                             inline_shape.Width = page_width
 
                         # 图片所在段落一律不缩进：这里清的是段落缩进（点值 +

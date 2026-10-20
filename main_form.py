@@ -536,33 +536,50 @@ class MainForm:
         group = tk.Frame(parent, bg="white", highlightthickness=1, highlightbackground="black", highlightcolor="black") # , text="变更图片和表格格式")
         group.pack(fill=tk.X, padx=3, pady=(3, 3))
         
+        # 每一行用一个独立子 Frame + pack 排列，而不是所有控件共用一个
+        # grid：grid 的列宽是跨行共享的——第 0 行右侧的"不改变图片大小"
+        # 会把第 3 列撑到约 110px，第 1 行两个按钮之间就凭空多出同样宽的
+        # 空列，整组请求宽度涨到约 480px，超过左栏可视宽度（约 400px），
+        # 右侧控件被挤出可视范围。用 pack 后两行宽度各自独立，最宽一行
+        # 约 355px，所有控件都能完整显示。
+        row0 = tk.Frame(group, bg="white")
+        row0.pack(fill=tk.X, padx=2, pady=(3, 0))
+
         self.chk_change_image_and_table_format = tk.BooleanVar(value=True)
-        cb = ttk.Checkbutton(group, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton")
-        cb.grid(row=0, column=0, columnspan=4, sticky=tk.W, padx=2, pady=3)
+        cb = ttk.Checkbutton(row0, text="变更图片与表格的格式", variable=self.chk_change_image_and_table_format, style="Bold.TCheckbutton")
+        cb.pack(side=tk.LEFT)
         cb.bind('<Button-3>', lambda e: self._on_section_checkbox_right_click(self.chk_change_image_and_table_format))
 
-        # “只处理表格”勾选项（与上一控件同行，靠最右排列）
+        # 右侧自右向左：只处理表格、不改变图片大小（后者在前者左边）。
         self.chk_table_only = tk.BooleanVar(value=False)
-        ttk.Checkbutton(group, text="只处理表格", variable=self.chk_table_only).grid(
-            row=0, column=4, sticky=tk.E, padx=2, pady=3)
+        ttk.Checkbutton(row0, text="只处理表格", variable=self.chk_table_only).pack(
+            side=tk.RIGHT)
+
+        # “不改变图片大小”勾选项：与“只处理表格”同行，位于其左侧。
+        # 勾选后图片只做环绕方式/边框/居中/缩进等与尺寸无关的处理，
+        # 原宽度、原高度都不动（优先于“最大宽度”复选框）。
+        self.chk_keep_image_size = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row0, text="不改变图片大小", variable=self.chk_keep_image_size).pack(
+            side=tk.RIGHT, padx=(0, 4))
+
+        row1 = tk.Frame(group, bg="white")
+        row1.pack(fill=tk.X, padx=2, pady=(0, 3))
 
         # 复选框行：不缩进、最大宽度
         self.chk_image_no_indent = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="不缩进", variable=self.chk_image_no_indent).grid(
-            row=1, column=0, sticky=tk.W, padx=2, pady=3)
+        ttk.Checkbutton(row1, text="不缩进", variable=self.chk_image_no_indent).pack(
+            side=tk.LEFT)
         
         self.chk_max_width = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="最大宽度", variable=self.chk_max_width).grid(
-            row=1, column=1, sticky=tk.W, padx=2, pady=3)
-        
-        self.btn_cancel_wrap_as_inline = ttk.Button(group, text="取消嵌入型环绕", command=self._on_cancel_wrap_as_inline)
-        self.btn_cancel_wrap_as_inline.grid(row=1, column=2, sticky=tk.W, padx=(44, 2), pady=3)
+        ttk.Checkbutton(row1, text="最大宽度", variable=self.chk_max_width).pack(
+            side=tk.LEFT, padx=(6, 0))
 
-        group.grid_columnconfigure(3, weight=1)
+        # 右侧自右向左：删除所有图片、取消嵌入型环绕
+        self.btn_delete_all_pic = ttk.Button(row1, text="删除所有图片", command=self._on_delete_all_pictures)
+        self.btn_delete_all_pic.pack(side=tk.RIGHT)
 
-        # 删除所有图片按钮（与上一行控件同行，靠最右排列）
-        self.btn_delete_all_pic = ttk.Button(group, text="删除所有图片", command=self._on_delete_all_pictures)
-        self.btn_delete_all_pic.grid(row=1, column=4, sticky=tk.E, padx=2, pady=3)
+        self.btn_cancel_wrap_as_inline = ttk.Button(row1, text="取消嵌入型环绕", command=self._on_cancel_wrap_as_inline)
+        self.btn_cancel_wrap_as_inline.pack(side=tk.RIGHT, padx=(0, 6))
     
     def _create_cancel_button(self, parent):
         """创建取消所有设置按钮和使能所有设置按钮"""
@@ -1287,12 +1304,16 @@ class MainForm:
                     float(self.top_margin.get()),
                     float(self.bottom_margin.get()),
                     float(self.left_margin.get()),
-                    float(self.right_margin.get()))
+                    float(self.right_margin.get()),
+                    progress=self._make_status_reporter("页面边距", 1))
             
             if self.chk_add_page_num.get():
                 self._set_status("正在添加页码…")
                 PageNumberManager.add_page_numbers_custom(self.work_doc)
 
+            # 总标题格式独立于"变更正文格式"：即使未勾选正文格式，首行也
+            # 必须水平居中、段首缩进为"无"。首行是标题而不是正文，不能因为
+            # 跳过正文处理就漏掉它。
             if self.chk_change_main_title_format.get():
                 self._set_status("正在设置文章首行总标题格式…")
                 font = self.cmb_main_title_font.get()
@@ -1305,6 +1326,13 @@ class MainForm:
                     font, font_size,
                     self.chk_main_title_bold.get(),
                     progress=self._make_status_reporter("总标题格式", 1))
+            else:
+                # 未勾选"变更文章首行总标题"：字体、字号、加粗、段间距与
+                # 样式都保持作者原样，但首行仍强制水平居中、段首缩进为
+                # "无"（只写这两项的直接格式）。
+                self._set_status("正在设置首行总标题对齐与缩进…")
+                set_doc_format.set_main_title_layout(
+                    progress=self._make_status_reporter("首行对齐", 1))
             
             # 图片与表格格式设置（正文格式之后执行，将浮动图形转为嵌入型，
             # 后续的边框、居中、表格最大宽度操作才能正确应用到转换后的对象上）
@@ -1318,6 +1346,7 @@ class MainForm:
                     no_indent=self.chk_image_no_indent.get(),
                     max_width=self.chk_max_width.get(),
                     table_only=table_only,
+                    keep_image_size=self.chk_keep_image_size.get(),
                     progress=self._make_status_reporter("图片与表格格式", 5))
 
                 # 勾选"只处理表格"时，以下图片相关操作一并跳过

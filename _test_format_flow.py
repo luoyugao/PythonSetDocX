@@ -61,8 +61,11 @@ class FakeSetDocumentFormat:
         assert callable(progress), "set_content_style 未收到可调用的 progress"
         progress("正在同步「正文」样式…")
 
-    def set_page_margins(self, *args):
-        self._record("set_page_margins")
+    def set_page_margins(self, *args, progress=None):
+        self._record("set_page_margins", progress=progress)
+        assert callable(progress), "set_page_margins 未收到可调用的 progress"
+        progress("正在设置页面边距… 1/3")
+        return True
 
     def set_page_orientation(self, is_portrait_orientation=True, progress=None):
         self._record("set_page_orientation",
@@ -75,10 +78,17 @@ class FakeSetDocumentFormat:
         self._record("set_main_title_format", progress=progress)
         assert callable(progress)
 
+    def set_main_title_layout(self, progress=None):
+        self._record("set_main_title_layout", progress=progress)
+        assert callable(progress), "set_main_title_layout 未收到可调用的 progress"
+        progress("正在设置首行总标题对齐与缩进…")
+        return True
+
     def set_images_and_tables(self, wrap_as_inline=True, no_indent=True,
-                              max_width=True, table_only=False, progress=None):
+                              max_width=True, table_only=False,
+                              keep_image_size=False, progress=None):
         self._record("set_images_and_tables", table_only=table_only,
-                     progress=progress)
+                     keep_image_size=keep_image_size, progress=progress)
         assert callable(progress), "set_images_and_tables 未收到 progress"
 
     def add_image_border(self, progress=None):
@@ -170,27 +180,32 @@ def install_fake_page_number_module():
     sys.modules["page_number_manager"] = fake
 
 
-def build_form(table_only):
+def build_form(table_only, content_format=True, main_title_format=True,
+               keep_image_size=False):
     """构建主窗体并勾选各步骤；table_only 控制"只处理表格"。
 
     每次只用一个 Tk root：窗体内部有 1 秒周期的活动文档轮询，销毁窗口后
     再跑第二遍会让该轮询命中已销毁的控件，故本测试只跑单遍。
+    content_format / main_title_format 控制对应组的勾选状态，用来验证
+    "未勾选变更正文格式"与"未勾选变更文章首行总标题"两种流程；
+    keep_image_size 控制新加的"不改变图片大小"复选框。
     """
     root = tk.Tk()
     app = main_form.MainForm(root)
     root.withdraw()
 
     # 勾选需要走到的各步骤
-    app.chk_change_content_format.set(True)
+    app.chk_change_content_format.set(content_format)
     app.chk_change_page_orientation.set(True)
     app.radio_page_portrait.set(False)      # 横向：本测试要验证的就是"横向"能落地
     app.chk_change_page_margin.set(True)
     app.chk_add_page_num.set(True)
-    app.chk_change_main_title_format.set(True)
+    app.chk_change_main_title_format.set(main_title_format)
     app.chk_change_image_and_table_format.set(True)
     app.chk_change_level_title_format.set(True)
     app.chk_image_no_indent.set(True)
     app.chk_table_only.set(table_only)
+    app.chk_keep_image_size.set(keep_image_size)
     app.cmb_content_indent.set("首行缩进2字符")
     app.cmb_content_align.set("两端对齐")
 
@@ -208,12 +223,20 @@ def build_form(table_only):
 
 
 def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "default"
+    content_format = mode not in ("content_off", "both_off")
+    main_title_format = mode not in ("title_off", "both_off")
+    keep_image_size = mode == "keep_size"
+
     install_fake_module()
     install_fake_page_number_module()
 
     # "只处理表格"=否：图片边框、图片居中、图片段落缩进等步骤全部走到，
     # 每一个 set_xxx(progress=…) 调用都在此被验证（本次报错的根因就在这里）
-    root, app = build_form(table_only=False)
+    root, app = build_form(table_only=False,
+                           content_format=content_format,
+                           main_title_format=main_title_format,
+                           keep_image_size=keep_image_size)
 
     app.word_app = FakeWordApp()
     FakeSetDocumentFormat.calls = []
@@ -230,6 +253,58 @@ def main():
     print("最终状态栏：", app.status_bar.cget("text"))
 
     assert not errors, f"流程中抛出异常：{errors}"
+
+    # ---- 断言 0a："变更正文格式"未勾选时，正文相关步骤全部跳过 ----
+    if not content_format:
+        for skipped in ("snapshot_protected_paragraph_format",
+                        "set_content_format", "set_content_style",
+                        "restore_protected_paragraph_format"):
+            assert skipped not in names, \
+                f"未勾选「变更正文格式」却执行了 {skipped}：{names}"
+
+    # ---- 断言 0b：总标题组勾选时走完整格式；未勾选时仍强制首行
+    #      水平居中 + 段首缩进为"无"（set_main_title_layout），二者只走一条 ----
+    if main_title_format:
+        assert "set_main_title_format" in names, \
+            f"勾选「变更文章首行总标题」时总标题格式被漏掉：{names}"
+        assert "set_main_title_layout" not in names, \
+            f"总标题组已勾选，不应再重复调用 set_main_title_layout：{names}"
+    else:
+        assert "set_main_title_format" not in names, \
+            f"未勾选「变更文章首行总标题」却改了字体字号：{names}"
+        assert names.count("set_main_title_layout") == 1, \
+            f"未勾选总标题组时应且仅应强制一次首行对齐：{names}"
+        assert names.index("set_main_title_layout") < \
+            names.index("set_images_and_tables"), \
+            f"首行对齐应在图片/表格处理之前：{names}"
+        if content_format:
+            # 正文样式会改「正文」的对齐/缩进，首行必须在它之后再用直接
+            # 格式钉一次，否则会被样式继承顶掉
+            assert names.index("set_main_title_layout") > \
+                names.index("set_content_style"), \
+                f"首行对齐应排在正文样式处理之后：{names}"
+
+    # ---- 断言 0c：新加的"不改变图片大小"必须原样传给 set_images_and_tables ----
+    image_calls = [kw for n, kw in FakeSetDocumentFormat.calls
+                   if n == "set_images_and_tables"]
+    assert image_calls, f"未调用 set_images_and_tables：{names}"
+    assert image_calls[0].get("keep_image_size") is keep_image_size, \
+        f"「不改变图片大小」未正确传递：{image_calls[0]}"
+
+    if mode == "content_off":
+        assert names.index("set_main_title_format") < \
+            names.index("set_images_and_tables"), \
+            f"总标题格式应在图片/表格处理之前：{names}"
+        root.destroy()
+        print("\n全部通过：未勾选「变更正文格式」时，正文步骤跳过、"
+              "总标题格式照常执行")
+        return
+
+    if mode in ("title_off", "both_off"):
+        root.destroy()
+        print("\n全部通过：未勾选「变更文章首行总标题」时，不改字体字号，"
+              "但仍强制首行居中、段首缩进为无")
+        return
 
     # ---- 断言 1：正文格式必须是第一步 ----
     assert names[0] == "snapshot_protected_paragraph_format", names

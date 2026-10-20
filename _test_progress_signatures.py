@@ -21,6 +21,7 @@ SETTER_NAMES = {
     "set_content_format",
     "set_content_style", "snapshot_protected_paragraph_format",
     "restore_protected_paragraph_format", "set_main_title_format",
+    "set_main_title_layout",
     "set_title_styles", "set_toc_line_spacing", "set_images_and_tables",
     "set_image_paragraph_no_indent", "set_table_paragraph_no_indent",
     "set_table_paragraph_spacing", "set_table_surrounding_spacing",
